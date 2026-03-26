@@ -6,39 +6,45 @@ import {
 
 const { sleep } = FrankerFaceZ.utilities.object;
 
-export class PopoutChatName {
+export default class PopoutChatName {
   constructor(parent) {
     this.parent = parent;
+    this.settings = parent.settings;
+    this.router = parent.router;
+    this.site = parent.site;
+    this.log = parent.log;
+
     this.isActive = false;
 
     this.handleNavigation = this.handleNavigation.bind(this);
     this.enablePopoutChatName = this.enablePopoutChatName.bind(this);
     this.disablePopoutChatName = this.disablePopoutChatName.bind(this);
     this.handleSettingChange = this.handleSettingChange.bind(this);
-    this.extractStreamerFromRoute = this.extractStreamerFromRoute.bind(this);
   }
 
   initialize() {
-    const enabled = this.parent.settings.get("addon.trubbel.channel.chat-popout-channel_name");
+    const enabled = this.settings.get("addon.trubbel.channel.chat.popout.title_name");
     if (enabled) {
       this.handleNavigation();
+    } else {
+      this.disablePopoutChatName();
     }
   }
 
   handleSettingChange(enabled) {
     if (enabled) {
-      this.parent.log.info("[Popout Chat Name] Enabling popout chat name replacement");
+      this.log.info("[Popout Chat Name] Enabling popout chat name replacement");
       this.handleNavigation();
     } else {
-      this.parent.log.info("[Popout Chat Name] Disabling popout chat name replacement");
+      this.log.info("[Popout Chat Name] Disabling popout chat name replacement");
       this.disablePopoutChatName();
     }
   }
 
   handleNavigation() {
-    const popoutRoutes = this.parent.site.constructor.POPOUT_ROUTES;
-    if (popoutRoutes.includes(this.parent.router?.current?.name)) {
-      const enabled = this.parent.settings.get("addon.trubbel.channel.chat-popout-channel_name");
+    const popoutRoutes = this.site.constructor.POPOUT_ROUTES;
+    if (popoutRoutes.includes(this.router?.current?.name)) {
+      const enabled = this.settings.get("addon.trubbel.channel.chat.popout.title_name");
       if (enabled && !this.isActive) {
         this.enablePopoutChatName();
       }
@@ -49,65 +55,71 @@ export class PopoutChatName {
     }
   }
 
-  async enablePopoutChatName() {
-    if (this.isActive) return;
-
-    const streamer = this.extractStreamerFromRoute();
-    if (!streamer) {
-      this.parent.log.warn("[Popout Chat Name] Could not extract streamer name from route");
-      return;
+  getChannelDataFromProps() {
+    const props = this.site.children?.chat?.ChatContainer?.first?.props;
+    if (!props) {
+      this.log.warn("[Popout Chat Name] ChatContainer props not available");
+      return null;
     }
 
-    this.parent.log.info(`[Popout Chat Name] Setting up chat name replacement for: ${streamer}`);
+    if (!props.isPopout) {
+      this.log.warn("[Popout Chat Name] Could not find popout state");
+      return null;
+    }
+
+    const { channelDisplayName, channelLogin } = props;
+    if (!channelDisplayName || !channelLogin) {
+      this.log.warn("[Popout Chat Name] ChatContainer props missing channel data");
+      return null;
+    }
+
+    return { channelDisplayName, channelLogin };
+  }
+
+  async enablePopoutChatName() {
+    if (this.isActive) return;
     this.isActive = true;
 
     try {
-      const streamChatHeader = await this.parent.site.awaitElement(
+      const streamChatHeader = await this.site.awaitElement(
         `${POPOUT_CHAT_HEADER_SELECTOR}, ${MOD_POPOUT_CHAT_HEADER_SELECTOR}, ${DASH_POPOUT_CHAT_HEADER_SELECTOR}`,
         document.documentElement,
         10000
       );
 
       if (!streamChatHeader) {
-        this.parent.log.warn("[Popout Chat Name] Chat header element not found");
+        this.log.warn("[Popout Chat Name] Chat header element not found");
+        this.isActive = false;
         return;
       }
 
-      // Because of shared chats
+      // waiting because of shared chats
       await sleep(5000);
 
-      const data = await this.parent.twitch_data.getUser(null, streamer);
+      const data = this.getChannelDataFromProps();
       if (!data) {
-        this.parent.log.warn(`[Popout Chat Name] Could not get user data for: ${streamer}`);
+        this.isActive = false;
         return;
       }
 
-      const displayName = data.displayName;
-      const login = data.login;
-      const username = displayName.toLowerCase() !== login ? `${displayName} (${login})` : displayName;
+      const { channelDisplayName, channelLogin } = data;
+      const username = channelDisplayName.toLowerCase() !== channelLogin
+        ? `${channelDisplayName} (${channelLogin})`
+        : channelDisplayName;
 
       streamChatHeader.textContent = username;
       streamChatHeader.title = username;
 
-      this.parent.log.info(`[Popout Chat Name] Chat header updated to: ${username}`);
+      this.log.info(`[Popout Chat Name] Chat header updated to: ${username}`);
     } catch (error) {
-      this.parent.log.warn("[Popout Chat Name] Error updating chat header:", error);
+      this.log.warn("[Popout Chat Name] Error updating chat header:", error);
+      this.isActive = false;
     }
   }
 
   disablePopoutChatName() {
     if (!this.isActive) return;
-    this.parent.log.info("[Popout Chat Name] Removing chat name replacement");
+    this.log.info("[Popout Chat Name] Removing chat name replacement");
     this.isActive = false;
-  }
-
-  extractStreamerFromRoute() {
-    if (!this.parent.router?.match) {
-      this.parent.log.warn("[Popout Chat Name] No valid route match found");
-      return null;
-    }
-
-    const streamer = this.parent.router?.match[1];
-    return streamer;
   }
 }

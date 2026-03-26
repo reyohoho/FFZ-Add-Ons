@@ -1,35 +1,36 @@
-// EloWard FFZ Addon - League of Legends Rank Badges for Streamers
-// Properly integrated with FFZ's badge system and chat architecture
-
 class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 	constructor(...args) {
 		super(...args);
 
-		// Inject FFZ services
 		this.inject('chat');
 		this.inject('chat.badges');
 		this.inject('settings');
-		this.inject('site'); // Add site injection for context access
-		this.inject('site.twitch_data'); // Inject twitch_data for getUserGame
+		this.inject('site');
+		this.inject('site.twitch_data');
 
-		// Configuration
 		this.config = {
-			apiUrl: 'https://eloward-viewers-api.unleashai.workers.dev/api',
-			subscriptionUrl: 'https://eloward-subscription-api.unleashai.workers.dev',
-			cacheExpiry: 60 * 60 * 1000, // 1 hour
+			apiUrl: 'https://eloward-ranks.unleashai.workers.dev/api',
+			channelUrl: 'https://eloward-users.unleashai.workers.dev',
+			cacheExpiry: 60 * 60 * 1000,
 			maxCacheSize: 500
 		};
 
-		// State management
+		this.regionMapping = {
+			'na1': 'na', 'euw1': 'euw', 'eun1': 'eune', 'kr': 'kr', 'br1': 'br',
+			'jp1': 'jp', 'la1': 'lan', 'la2': 'las', 'oc1': 'oce', 'tr1': 'tr',
+			'ru': 'ru', 'me1': 'me', 'sea': 'sg', 'tw2': 'tw', 'vn2': 'vn'
+		};
+
 		this.cache = new Map();
-		this.subscribedChannels = new Set();
-		this.activeRooms = new Map(); // roomId -> roomLogin
-		this.lolCategoryRooms = new Set(); // rooms where LoL category is detected
+		this.activeChannels = new Set();
+		this.activeRooms = new Map();
+		this.lolCategoryRooms = new Set();
 		this.chromeExtensionDetected = false;
 		this.rankTiers = new Set(['iron', 'bronze', 'silver', 'gold', 'platinum', 'emerald', 'diamond', 'master', 'grandmaster', 'challenger', 'unranked']);
 		this.userBadges = new Map();
+		this.badgeStyleElement = null;
 
-		// Settings - Use dynamic category detection as recommended by SirStendec
+
 		this.settings.add('eloward.enabled', {
 			default: true,
 			ui: {
@@ -41,7 +42,6 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			changed: () => this.updateBadges()
 		});
 
-		// Manual override for OBS/popout environments
 		this.settings.add('eloward.manual_override', {
 			default: false,
 			ui: {
@@ -52,188 +52,156 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			},
 			changed: () => this.updateBadges()
 		});
-
-
 	}
 
 	onEnable() {
-		this.log.info('EloWard FFZ Addon: Initializing');
-
-		// IMMEDIATE Chrome Extension Detection - Check FIRST before any initialization
-		// Check both body and documentElement for the detection attribute
+		
 		const chromeExtDetectedBody = document.body?.getAttribute('data-eloward-chrome-ext') === 'active';
 		const chromeExtDetectedHtml = document.documentElement?.getAttribute('data-eloward-chrome-ext') === 'active';
 		
 		if (chromeExtDetectedBody || chromeExtDetectedHtml) {
 			this.chromeExtensionDetected = true;
-			this.log.info('Chrome extension detected - FFZ addon completely disabled for entire session');
-			// Exit immediately - no functionality should be enabled
+			this.log.info('🔌 EloWard: Chrome extension detected - FFZ addon disabled for this session');
 			return;
 		}
 
-		// Initialize rank badges
+		this.initializeBasicInfrastructure();
 		this.initializeRankBadges();
-
-		// Set up chat room event listeners
 		this.on('chat:room-add', this.onRoomAdd, this);
 		this.on('chat:room-remove', this.onRoomRemove, this);
-
-		// Listen for context changes to re-evaluate category detection
 		this.on('site.context:changed', this.onContextChanged, this);
-
-		// Setup chat tokenizer
+		
 		this.chat.addTokenizer({
 			type: 'eloward-ranks',
 			process: this.processMessage.bind(this)
 		});
-
-		// Handle existing rooms with proper timing and retries
-		this.initializeExistingRooms();
 		
-		this.log.info('EloWard FFZ Addon: Ready');
+		this.initializeExistingRooms();
 	}
 
-	getBadgeData(tier) {
+	initializeBasicInfrastructure() {
+		this.badgeStyleElement = document.createElement('style');
+		this.badgeStyleElement.id = 'eloward-badge-styles';
+		this.badgeStyleElement.textContent = `${this.generateRankSpecificCSS()}
+			/* EloWard tooltip line weights */
+			.eloward-tt { display:flex; flex-direction:column; gap:2px; }
+			.eloward-tt .rank   { font-weight: 600; }
+			.eloward-tt .muted  { opacity: .8; font-weight: 500; }
+			.eloward-tt .hint   { opacity: .6; font-weight: 500; }
+		`;
+		document.head.appendChild(this.badgeStyleElement);
+	}
+
+	getBadgeData(tier, isAnimated = false) {
+		const extension = isAnimated ? '.webp' : '.png';
+		const suffix = isAnimated ? '_premium' : '';
+		const badgeUrl = `https://eloward-cdn.unleashai.workers.dev/lol/${tier}${suffix}${extension}`;
+		
 		return {
 			id: tier,
-			title: `${tier.charAt(0).toUpperCase() + tier.slice(1)}`,
-			slot: 1,
-			image: `https://eloward-cdn.unleashai.workers.dev/lol/${tier}.png`,
+			title: '',
+			slot: 777,
+			image: badgeUrl,
 			urls: {
-				1: `https://eloward-cdn.unleashai.workers.dev/lol/${tier}.png`,
-				2: `https://eloward-cdn.unleashai.workers.dev/lol/${tier}.png`,
-				4: `https://eloward-cdn.unleashai.workers.dev/lol/${tier}.png`
+				1: badgeUrl,
+				2: badgeUrl,
+				4: badgeUrl
 			},
 			svg: false,
-			tooltipExtra: this.createTooltipHandler.bind(this)
+			tooltipExtra: this.createTooltipHandler.bind(this),
+			click_handler: this.handleBadgeClick.bind(this)
 		};
 	}
 
-	getBadgeId(tier) {
-		return `addon.eloward.rank-${tier}`;
+	getBadgeId(tier, isAnimated = false) { 
+		const suffix = isAnimated ? '-premium' : '';
+		return `addon.eloward.rank-${tier}${suffix}`;
 	}
 
-	createTooltipHandler(user, badge, createElement) {
+	createTooltipHandler(user) {
 		try {
-			const username = user.login || user.user_login;
+			const username = user?.login || user?.user_login;
 			if (!username) return null;
-			
+
 			const cachedRank = this.getCachedRank(username);
 			if (!cachedRank) return null;
-			
-			return this.createRankTooltip(cachedRank, createElement);
-		} catch (error) {
+
+			const rankText = this.formatRankText(cachedRank);
+			const summonerName = cachedRank.summonerName || null;
+			const region = this.getDisplayRegion(cachedRank.region);
+
+			const wrap = document.createElement('div');
+			wrap.className = 'eloward-tt';
+
+			if (rankText) {
+				const l1 = document.createElement('div');
+				l1.className = 'rank';
+				l1.textContent = rankText;
+				wrap.appendChild(l1);
+			}
+
+			if (summonerName) {
+				const l2 = document.createElement('div');
+				l2.className = 'muted';
+				l2.textContent = summonerName;
+				wrap.appendChild(l2);
+			}
+
+			if (region) {
+				const l3 = document.createElement('div');
+				l3.className = 'muted';
+				l3.textContent = region;
+				wrap.appendChild(l3);
+			}
+
+			const l4 = document.createElement('div');
+			l4.className = 'hint';
+			l4.textContent = 'Click to view OP.GG';
+			wrap.appendChild(l4);
+
+			return wrap;
+		} catch {
 			return null;
 		}
 	}
 
-	createRankTooltip(rankData, createElement) {
-		if (!rankData?.tier) return null;
-		
-		const tier = rankData.tier.toLowerCase();
-		const rankImageUrl = `https://eloward-cdn.unleashai.workers.dev/lol/${tier}.png`;
-		const rankText = this.formatRankText(rankData);
-		
-		const container = createElement('div', {
-			style: 'display: flex; align-items: center; gap: 8px; min-width: 120px; padding: 4px;'
-		});
-		
-		const rankImage = createElement('img', {
-			src: rankImageUrl,
-			style: 'width: 24px; height: 24px; flex-shrink: 0;',
-			alt: tier
-		});
-		
-		const rankTextEl = createElement('span', {
-			style: 'font-size: 13px; font-weight: 500; color: #efeff1;'
-		}, rankText);
-		
-		container.appendChild(rankImage);
-		container.appendChild(rankTextEl);
-		
-		return container;
+	// Removed DOM tooltip builder; we rely on FFZ tooltipExtra (string) for robust cross-theme tooltips
+
+	// eslint-disable-next-line no-unused-vars
+	handleBadgeClick(_user_id, user_login, _room_id, _room_login, _badge_data, _event) {
+		try {
+			if (!user_login) return null;
+			
+			const cachedRank = this.getCachedRank(user_login);
+			if (!cachedRank?.summonerName || !cachedRank?.region) return null;
+			
+			const opGGRegion = this.regionMapping[cachedRank.region];
+			if (!opGGRegion) return null;
+			
+			const encodedName = encodeURIComponent(cachedRank.summonerName.split('#')[0]);
+			const tagLine = cachedRank.summonerName.split('#')[1] || cachedRank.region.toUpperCase();
+			const opGGUrl = `https://op.gg/lol/summoners/${opGGRegion}/${encodedName}-${tagLine}`;
+			
+			return opGGUrl;
+		} catch (error) {
+			console.warn('EloWard: Error handling badge click:', error);
+			return null;
+		}
 	}
 
 	initializeRankBadges() {
 		for (const tier of this.rankTiers) {
-			const badgeId = this.getBadgeId(tier);
-			const badgeData = this.getBadgeData(tier);
-			this.badges.loadBadgeData(badgeId, badgeData);
-		}
-	}
-
-	async onRoomAdd(room) {
-		const roomLogin = room.login;
-		const roomId = room.id;
-		
-		if (!roomLogin) {
-			return;
-		}
-		
-		this.activeRooms.set(roomId || roomLogin, roomLogin);
-		
-		// Check League of Legends category and subscription status
-		await this.detectAndSetCategoryForRoom(roomLogin);
-		const isSubscribed = await this.checkChannelSubscription(roomLogin);
-		
-		if (isSubscribed) {
-			this.subscribedChannels.add(roomLogin);
-			this.log.info(`EloWard active for channel: ${roomLogin}`);
-		}
-	}
-
-	onRoomRemove(room) {
-		const roomId = room.id;
-		const roomLogin = this.activeRooms.get(roomId);
-		
-		this.activeRooms.delete(roomId);
-		if (roomLogin) {
-			this.subscribedChannels.delete(roomLogin);
-			this.lolCategoryRooms.delete(roomLogin);
-		}
-	}
-
-	initializeExistingRooms() {
-		if (!this.chat || !this.chat.iterateRooms) {
-			return;
-		}
-		
-		let roomCount = 0;
-		
-		try {
-			for (const room of this.chat.iterateRooms()) {
-				roomCount++;
-				
-				// Process room asynchronously to avoid blocking
-				setTimeout(() => {
-					this.onRoomAdd(room);
-				}, 10 * roomCount); // Stagger processing
-			}
-		} catch (error) {
-			this.log.info(`Error iterating rooms: ${error.message}`);
-		}
-	}
-
-	onContextChanged() {
-		// Re-evaluate category detection for all active rooms when context changes
-		this.log.info('Site context changed, re-checking categories for all rooms');
-		
-		for (const roomLogin of this.activeRooms.values()) {
-			// Trigger immediate check using FFZ's getUserGame since context changed
-			this.checkStreamCategory(roomLogin).then(isLoL => {
-				if (isLoL && !this.lolCategoryRooms.has(roomLogin)) {
-					this.lolCategoryRooms.add(roomLogin);
-					this.log.info('Added', roomLogin, 'to LoL category rooms after context change');
-				} else if (!isLoL && this.lolCategoryRooms.has(roomLogin)) {
-					this.lolCategoryRooms.delete(roomLogin);
-					this.log.info('Removed', roomLogin, 'from LoL category rooms after context change');
-				}
-			});
+			const staticBadgeId = this.getBadgeId(tier, false);
+			const staticBadgeData = this.getBadgeData(tier, false);
+			this.badges.loadBadgeData(staticBadgeId, staticBadgeData);
+			
+			const animatedBadgeId = this.getBadgeId(tier, true);
+			const animatedBadgeData = this.getBadgeData(tier, true);
+			this.badges.loadBadgeData(animatedBadgeId, animatedBadgeData);
 		}
 	}
 
 	processMessage(tokens, msg) {
-		// Check if addon is enabled
 		if (!this.settings.get('eloward.enabled')) {
 			return tokens;
 		}
@@ -246,15 +214,13 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			return tokens;
 		}
 
-		// Check if this room has League of Legends category and is subscribed
 		const hasLoLCategory = this.lolCategoryRooms.has(roomLogin);
-		const isSubscribed = this.subscribedChannels.has(roomLogin);
+		const isActive = this.activeChannels.has(roomLogin);
 
-		if (!hasLoLCategory || !isSubscribed) {
+		if (!hasLoLCategory || !isActive) {
 			return tokens;
 		}
 
-		// Track metrics and process rank lookup
 		this.incrementMetric('db_read', roomLogin);
 
 		const cachedRank = this.getCachedRank(username);
@@ -262,7 +228,6 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			this.incrementMetric('successful_lookup', roomLogin);
 			this.addUserBadge(user.id, username, cachedRank);
 		} else {
-			// Make direct API call without queuing
 			this.fetchAndProcessRank(username, user.id, roomLogin);
 		}
 
@@ -277,29 +242,187 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 				this.addUserBadge(userId, username, rankData);
 				this.incrementMetric('successful_lookup', roomLogin);
 			}
-		} catch (error) {
-			// Silently handle errors - most are 404s for users without rank data
+		} catch {
+			// Silent fail
 		}
 	}
 
-	formatRankText(rankData) {
-		if (!rankData?.tier || rankData.tier.toUpperCase() === 'UNRANKED') {
-			return 'UNRANKED';
+	getCurrentChannelName() {
+		const pathname = window.location.pathname;
+		
+		const popoutMatch = pathname.match(/^\/popout\/([^/]+)\/chat/);
+		if (popoutMatch) {
+			return popoutMatch[1].toLowerCase();
 		}
 		
-		let rankText = rankData.tier.toUpperCase();
-		
-		// Add division for ranks that have divisions
-		if (rankData.division && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(rankData.tier.toUpperCase())) {
-			rankText += ` ${rankData.division}`;
+		const dashPopoutMatch = pathname.match(/^\/popout\/u\/([^/]+)\/stream-manager\/chat/);
+		if (dashPopoutMatch) {
+			return dashPopoutMatch[1].toLowerCase();
 		}
 		
-		// Add LP for ranked players
-		if (rankData.leaguePoints !== undefined && rankData.leaguePoints !== null) {
-			rankText += ` - ${rankData.leaguePoints} LP`;
+		const embedMatch = pathname.match(/^\/embed\/([^/]+)\/chat/);
+		if (embedMatch) {
+			return embedMatch[1].toLowerCase();
 		}
 		
-		return rankText;
+		const modPopoutMatch = pathname.match(/^\/popout\/moderator\/([^/]+)\/chat/);
+		if (modPopoutMatch) {
+			return modPopoutMatch[1].toLowerCase();
+		}
+		
+		const normalMatch = pathname.match(/^\/([^/]+)/);
+		return normalMatch ? normalMatch[1].toLowerCase() : null;
+	}
+
+	generateRankSpecificCSS() {
+		let css = `
+			.ffz-badge[data-badge^="addon.eloward.rank-"] {
+				display: inline-flex !important;
+				justify-content: center !important;
+				align-items: center !important;
+				width: 20px !important;
+				height: 20px !important;
+				min-width: 20px !important;
+				margin: 0 .3rem .2rem 0 !important;
+				background-size: contain !important;
+				background-repeat: no-repeat !important;
+				background-position: center !important;
+				transform: translateY(-5px) !important;
+				position: relative !important;
+				vertical-align: middle !important;
+				cursor: pointer !important;
+				transition: none !important;
+				box-sizing: content-box !important;
+				-webkit-user-select: none !important;
+				user-select: none !important;
+				-webkit-touch-callout: none !important;
+				overflow: visible !important;
+			}
+
+		`;
+
+		const rankTransforms = {
+			iron: { scale: '1.3', translate: 'translate(-1.5px, 1.5px)', margin: { right: '0px', left: '0px' } },
+			bronze: { scale: '1.2', translate: 'translate(-1.5px, 3px)', margin: { right: '0px', left: '0px' } },
+			silver: { scale: '1.2', translate: 'translate(-1.5px, 2.5px)', margin: { right: '0px', left: '0px' } },
+			gold: { scale: '1.22', translate: 'translate(-1.5px, 3.5px)', margin: { right: '0px', left: '0px' } },
+			platinum: { scale: '1.22', translate: 'translate(-1.5px, 4px)', margin: { right: '0px', left: '1px' } },
+			emerald: { scale: '1.23', translate: 'translate(-1.5px, 4px)', margin: { right: '0px', left: '0px' } },
+			diamond: { scale: '1.23', translate: 'translate(-1.5px, 3.25px)', margin: { right: '2px', left: '2px' } },
+			master: { scale: '1.2', translate: 'translate(-1.5px, 4px)', margin: { right: '1.5px', left: '1.5px' } },
+			grandmaster: { scale: '1.1', translate: 'translate(-1.5px, 4.5px)', margin: { right: '1px', left: '1px' } },
+			challenger: { scale: '1.22', translate: 'translate(-1.5px, 4px)', margin: { right: '2.5px', left: '2.5px' } },
+			unranked: { scale: '1.0', translate: 'translate(-1.5px, 5px)', margin: { right: '-1.5px', left: '-1.5px' } }
+		};
+
+		for (const tier of this.rankTiers) {
+			const transform = rankTransforms[tier];
+			if (transform) {
+				css += `
+					.ffz-badge[data-badge="addon.eloward.rank-${tier}"],
+					.ffz-badge[data-badge="addon.eloward.rank-${tier}-premium"] {
+						transform: translateY(-5px) scale(${transform.scale}) ${transform.translate} !important;
+						margin-right: ${transform.margin.right} !important;
+						margin-left: ${transform.margin.left} !important;
+					}
+				`;
+			}
+		}
+
+		css += `
+			.tw-root--theme-dark .ffz-badge[data-badge^="addon.eloward.rank-"] {
+				filter: brightness(0.95) !important;
+			}
+
+			.tw-root--theme-light .ffz-badge[data-badge^="addon.eloward.rank-"] {
+				filter: brightness(1.05) contrast(1.1) !important;
+			}
+		`;
+
+		css += `
+			@media (max-width: 400px) {
+				.ffz-badge[data-badge^="addon.eloward.rank-"] {
+					width: 18px !important;
+					height: 18px !important;
+					min-width: 18px !important;
+					margin-right: 0.2rem !important;
+				}
+			}
+		`;
+		
+		return css;
+	}
+
+	async onRoomAdd(room) {
+		const roomLogin = room.login;
+		const roomId = room.id;
+		
+		if (!roomLogin) {
+			return;
+		}
+		
+		this.activeRooms.set(roomId || roomLogin, roomLogin);
+		
+		await this.detectAndSetCategoryForRoom(roomLogin);
+		const isEnabled = await this.checkChannelActive(roomLogin);
+		
+		if (isEnabled) {
+			this.activeChannels.add(roomLogin);
+			this.log.info(`🎉 EloWard: Addon enabled for ${roomLogin} - ready to show rank badges!`);
+			this.processExistingChatUsers(room, roomLogin);
+		}
+	}
+
+	onRoomRemove(room) {
+		const roomId = room.id;
+		const roomLogin = this.activeRooms.get(roomId);
+		
+		this.activeRooms.delete(roomId);
+		if (roomLogin) {
+			this.activeChannels.delete(roomLogin);
+			this.lolCategoryRooms.delete(roomLogin);
+		}
+	}
+
+	initializeExistingRooms() {
+		if (!this.chat || !this.chat.iterateRooms) {
+			return;
+		}
+		
+		for (const room of this.chat.iterateRooms()) {
+			this.onRoomAdd(room);
+		}
+	}
+	processExistingChatUsers(room, roomLogin) {
+		if (!room || !roomLogin || !this.lolCategoryRooms.has(roomLogin) || !this.activeChannels.has(roomLogin)) {
+			return;
+		}
+		
+		try {
+			for (const user of room.iterateUsers()) {
+				if (!user.login || !user.id || this.userBadges.has(user.id)) {
+					continue;
+				}
+				
+				this.incrementMetric('db_read', roomLogin);
+				
+				const cachedRank = this.getCachedRank(user.login);
+				if (cachedRank) {
+					this.incrementMetric('successful_lookup', roomLogin);
+					this.addUserBadge(user.id, user.login, cachedRank);
+				} else {
+					this.fetchRankData(user.login).then(rankData => {
+						if (rankData) {
+							this.setCachedRank(user.login, rankData);
+							this.addUserBadge(user.id, user.login, rankData);
+							this.incrementMetric('successful_lookup', roomLogin);
+						}
+					}).catch(() => {});
+				}
+			}
+		} catch (error) {
+			this.log.warn(`Error processing existing users for ${roomLogin}:`, error);
+		}
 	}
 
 	removeUserBadges(userId) {
@@ -309,27 +432,6 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			ffzUser.removeBadge('addon.eloward', existing.badgeId);
 			this.userBadges.delete(userId);
 		}
-	}
-
-	updateBadges() {
-		if (!this.settings.get('eloward.enabled')) {
-			this.clearUserData();
-		} else {
-			// Re-add badges for all users when re-enabled
-			for (const [userId, badgeInfo] of this.userBadges.entries()) {
-				const ffzUser = this.chat.getUser(userId);
-				ffzUser.addBadge('addon.eloward', badgeInfo.badgeId);
-			}
-		}
-		this.emit('chat:update-lines');
-	}
-
-	clearUserData() {
-		// Remove badges from all users
-		for(const user of this.chat.iterateUsers()) {
-			user.removeAllBadges('addon.eloward');
-		}
-		this.userBadges.clear();
 	}
 
 	addUserBadge(userId, username, rankData) {
@@ -342,33 +444,84 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			return;
 		}
 
-		const badgeId = this.getBadgeId(tier);
+		const isAnimated = rankData.animate_badge || false;
+		const badgeId = this.getBadgeId(tier, isAnimated);
 		const ffzUser = this.chat.getUser(userId);
 
-		// Always update the badge data with current rank information for tooltip
-		const formattedRankText = this.formatRankText(rankData);
-		const badgeData = this.getBadgeData(tier);
-		badgeData.title = formattedRankText; // Update title with full rank info
+		const badgeData = this.getBadgeData(tier, isAnimated);
+		badgeData.title = '';
 		
-		// Load/update the badge data in FFZ's system with tooltip support
 		this.badges.loadBadgeData(badgeId, badgeData);
 
-		// Check if user already has this badge
-		if (ffzUser.getBadge(badgeId)) {
-			// Even if they have the badge, we updated the data, so continue to store rank data
-		} else {
-			// Remove any existing EloWard badges from this user
+		if (!ffzUser.getBadge(badgeId)) {
 			this.removeUserBadges(userId);
-
-			// Add the badge to the user
 			ffzUser.addBadge('addon.eloward', badgeId);
 		}
 
-		// Track this badge assignment - IMPORTANT: Store the full rank data here
-		this.userBadges.set(userId, { username, tier, badgeId, rankData });
-
-		// Update chat display for this user
+		this.userBadges.set(userId, { username, tier, badgeId, rankData, isAnimated });
 		this.emit('chat:update-lines-by-user', userId, username, false, true);
+	}
+
+	onContextChanged() {
+		for (const roomLogin of this.activeRooms.values()) {
+			this.checkStreamCategory(roomLogin).then(isLoL => {
+				if (isLoL) {
+					this.lolCategoryRooms.add(roomLogin);
+				} else {
+					this.lolCategoryRooms.delete(roomLogin);
+				}
+			}).catch(() => {});
+		}
+	}
+
+	formatRankText(rankData) {
+		if (!rankData?.tier || rankData.tier.toUpperCase() === 'UNRANKED') {
+			return 'UNRANKED';
+		}
+		
+		let rankText = rankData.tier.toUpperCase();
+		
+		if (rankData.division && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(rankData.tier.toUpperCase())) {
+			rankText += ` ${rankData.division}`;
+		}
+		
+		if (rankData.leaguePoints !== undefined && rankData.leaguePoints !== null) {
+			rankText += ` - ${rankData.leaguePoints} LP`;
+		}
+		
+		return rankText;
+	}
+
+	getDisplayRegion(regionCode) {
+		if (!regionCode) return null;
+		const code = String(regionCode).toLowerCase();
+		const display = {
+			'na1': 'NA', 'br1': 'BR', 'la1': 'LAN', 'la2': 'LAS', 'oc1': 'OCE',
+			'euw1': 'EUW', 'eun1': 'EUNE', 'tr1': 'TR', 'ru': 'RU', 'kr': 'KR', 'jp1': 'JP',
+			'me1': 'ME', 'ph2': 'PH', 'sg2': 'SG', 'th2': 'TH', 'tw2': 'TW', 'vn2': 'VN',
+			'sea': 'SEA',
+			'americas': 'NA', 'europe': 'EU', 'asia': 'ASIA'
+		};
+		return display[code] || code.toUpperCase();
+	}
+
+	updateBadges() {
+		if (!this.settings.get('eloward.enabled')) {
+			this.clearUserData();
+		} else {
+			for (const [userId, badgeInfo] of this.userBadges.entries()) {
+				const ffzUser = this.chat.getUser(userId);
+				ffzUser.addBadge('addon.eloward', badgeInfo.badgeId);
+			}
+		}
+		this.emit('chat:update-lines');
+	}
+
+	clearUserData() {
+		for(const user of this.chat.iterateUsers()) {
+			user.removeAllBadges('addon.eloward');
+		}
+		this.userBadges.clear();
 	}
 
 	async fetchRankData(username) {
@@ -383,11 +536,14 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 		}
 
 		const data = await response.json();
+		
 		return {
 			tier: data.rank_tier,
 			division: data.rank_division,
 			leaguePoints: data.lp,
-			summonerName: data.riot_id
+			summonerName: data.riot_id,
+			region: data.region,
+			animate_badge: data.animate_badge || false
 		};
 	}
 
@@ -399,7 +555,6 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 		const normalizedUsername = username.toLowerCase();
 		const entry = this.cache.get(normalizedUsername);
 		if (entry && (Date.now() - entry.timestamp < this.config.cacheExpiry)) {
-			entry.frequency = (entry.frequency || 0) + 1;
 			return entry.data;
 		}
 		if (entry) {
@@ -411,39 +566,32 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 	setCachedRank(username, data) {
 		this.cache.set(username.toLowerCase(), {
 			data,
-			timestamp: Date.now(),
-			frequency: 1
+			timestamp: Date.now()
 		});
 
 		if (this.cache.size > this.config.maxCacheSize) {
-			this.evictLFU();
+			this.evictOldEntries();
 		}
 	}
 
-	evictLFU() {
-		let lowestFrequency = Infinity;
-		let userToEvict = null;
-
+	evictOldEntries() {
+		const now = Date.now();
 		for (const [key, entry] of this.cache.entries()) {
-			if (entry.timestamp && (Date.now() - entry.timestamp > this.config.cacheExpiry)) {
+			if (entry.timestamp && (now - entry.timestamp > this.config.cacheExpiry)) {
 				this.cache.delete(key);
-				continue;
-			}
-
-			if (entry.frequency < lowestFrequency) {
-				lowestFrequency = entry.frequency;
-				userToEvict = key;
 			}
 		}
 
-		if (userToEvict) {
-			this.cache.delete(userToEvict);
+		if (this.cache.size > this.config.maxCacheSize) {
+			const entries = Array.from(this.cache.entries())
+				.sort((a, b) => a[1].timestamp - b[1].timestamp);
+			
+			const toRemove = entries.slice(0, entries.length - this.config.maxCacheSize + 50);
+			toRemove.forEach(([key]) => this.cache.delete(key));
 		}
 	}
 
-
-
-	async checkChannelSubscription(channelName) {
+	async checkChannelActive(channelName) {
 		if (!channelName) {
 			return false;
 		}
@@ -452,7 +600,7 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			const normalizedName = channelName.toLowerCase();
 			this.incrementMetric('db_read', normalizedName);
 			
-			const response = await fetch(`${this.config.subscriptionUrl}/subscription/verify`, {
+			const response = await fetch(`${this.config.channelUrl}/channelstatus/verify`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ channel_name: normalizedName })
@@ -463,8 +611,17 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 			}
 			
 			const data = await response.json();
-			return !!data.subscribed;
-		} catch (error) {
+			const isActive = !!data.active;
+			
+			if (isActive) {
+				this.log.info(`✅ EloWard: Channel ${channelName} is active and registered`);
+			} else {
+				this.log.info(`❌ EloWard: Channel ${channelName} is not active`);
+			}
+			
+			return isActive;
+		} catch {
+			this.log.warn(`⚠️ EloWard: Failed to check status for ${channelName}`);
 			return false;
 		}
 	}
@@ -473,49 +630,42 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 		if (!channelName) return;
 
 		try {
-			const normalizedName = channelName.toLowerCase();
-			
-			await fetch(`${this.config.subscriptionUrl}/metrics/${type}`, {
+			await fetch(`${this.config.channelUrl}/metrics/${type}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ channel_name: normalizedName })
+				body: JSON.stringify({ channel_name: channelName.toLowerCase() })
 			});
-		} catch (error) {
-			// Silently fail metrics to avoid disrupting main functionality
+		} catch {
+			// Silent fail
 		}
 	}
 
 	onDisable() {
-		// Remove event listeners
+		if (this.badgeStyleElement) {
+			this.badgeStyleElement.remove();
+			this.badgeStyleElement = null;
+		}
+
 		this.off('chat:room-add', this.onRoomAdd);
 		this.off('chat:room-remove', this.onRoomRemove);
 		this.off('site.context:changed', this.onContextChanged);
 
-		// Remove tokenizer
 		this.chat.removeTokenizer('eloward-ranks');
 
-		// Clear all data
 		this.clearUserData();
 		this.cache.clear();
-		this.subscribedChannels.clear();
+		this.activeChannels.clear();
 		this.activeRooms.clear();
 		this.lolCategoryRooms.clear();
 	}
 
 	async detectAndSetCategoryForRoom(roomLogin) {
-		// Fixed delay to let Twitch servers update after stream start
-		const delayMs = 3000;
-		await new Promise(resolve => setTimeout(resolve, delayMs));
-		
-		// Check manual override first
 		const manualOverride = this.settings.get('eloward.manual_override');
 		if (manualOverride) {
-			this.log.info(`Manual override enabled, adding ${roomLogin} to LoL category rooms.`);
 			this.lolCategoryRooms.add(roomLogin);
 			return true;
 		}
 		
-		// Use FFZ's getUserGame method for reliable category detection
 		const isLolCategory = await this.checkStreamCategory(roomLogin);
 		
 		if (isLolCategory) {
@@ -527,28 +677,30 @@ class EloWardFFZAddon extends FrankerFaceZ.utilities.addon.Addon {
 
 	async checkStreamCategory(channelName) {
 		try {
-			// Use FFZ's getUserGame method for reliable category detection
-			// This leverages FFZ's caching and data layer as recommended by SirStendec
 			const game = await this.twitch_data.getUserGame(null, channelName);
 			
 			if (game) {
-				// Check for League of Legends by ID or name
+				const gameName = game.name || game.displayName || 'Unknown';
 				const isLoL = game.id === '21779' || 
 					game.name === 'League of Legends' ||
 					game.displayName === 'League of Legends';
 				
-				this.log.info(`Game detected for ${channelName}: ${game.name || game.displayName} (ID: ${game.id})`);
+				if (isLoL) {
+					this.log.info(`🎮 EloWard: League of Legends detected for ${channelName}`);
+				} else {
+					this.log.info(`🎯 EloWard: Different game detected for ${channelName}: ${gameName}`);
+				}
+				
 				return isLoL;
 			} else {
-				this.log.info(`No game detected for ${channelName} (channel may be offline or no game set)`);
+				this.log.info(`❓ EloWard: No game category found for ${channelName}`);
 				return false;
 			}
-		} catch (error) {
-			this.log.info(`Error checking game for ${channelName} via FFZ:`, error.message);
+		} catch {
 			return false;
 		}
 	}
+
 }
 
-// Register the addon with FFZ
 EloWardFFZAddon.register();
