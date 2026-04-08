@@ -253,9 +253,18 @@ export default class NametagPaints extends FrankerFaceZ.utilities.module.Module 
 			case 'RADIAL_GRADIENT': // paint is radial gradient
 				args.push(gradient.shape ?? 'circle');
 				break;
-			case 'URL': // paint is an image
-				args.push(gradient.image_url ?? '');
+			case 'URL': {
+				let imgUrl = gradient.image_url ?? '';
+				if (imgUrl && !imgUrl.startsWith('http') && !imgUrl.startsWith('//'))
+					imgUrl = `https://cdn.7tv.app${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
+				try {
+					const proxy = this.resolve('addon.reyohoho-emotes-proxy');
+					if (proxy && imgUrl)
+						imgUrl = proxy.applyProxy(imgUrl, '7tv');
+				} catch { /* proxy addon unavailable */ }
+				args.push(imgUrl);
 				break;
+			}
 		}
 		let funcPrefix = '';
 		if (gradient.function !== 'URL') {
