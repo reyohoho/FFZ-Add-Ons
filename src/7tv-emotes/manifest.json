@@ -1,6 +1,7 @@
 {
 	"enabled": true,
-	"requires": [],
+	"default_enabled": true,
+	"requires": ["reyohoho-emotes-proxy"],
 	"targets": [
 		"main",
 		"clips"

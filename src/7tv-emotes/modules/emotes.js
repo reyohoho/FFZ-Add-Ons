@@ -81,11 +81,7 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 			this.updateGlobalEmotes();
 			this.updateChannelSets();
 		});
-		this.on('settings:changed:addon.reyohoho-emotes-proxy.proxy-url', () => {
-			this.updateGlobalEmotes();
-			this.updateChannelSets();
-		});
-		this.on('settings:changed:addon.reyohoho-emotes-proxy.services', () => {
+		this.on('settings:changed:addon.reyohoho-emotes-proxy.7tv-enabled', () => {
 			this.updateGlobalEmotes();
 			this.updateChannelSets();
 		});

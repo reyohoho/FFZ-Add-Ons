@@ -1,5 +1,6 @@
 {
 	"enabled": true,
+	"default_enabled": true,
 	"targets": [
 		"main",
 		"clips"
