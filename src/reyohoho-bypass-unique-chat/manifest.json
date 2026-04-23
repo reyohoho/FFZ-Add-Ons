@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"requires": [],
+	"version": "1.0.0",
+	"short_name": "ReYohoho Bypass Unique Chat",
+	"name": "ReYohoho Bypass Unique Chat",
+	"author": "ReYohoho",
+	"description": "Bypass Twitch unique-chat (R9K / duplicate message) mode by appending invisible Unicode characters to repeated messages.",
+	"settings": "add_ons.re_yohoho_bypass_unique_chat",
+	"website": "https://t.me/ReYohoho",
+	"created": "2026-04-23T00:00:00.000Z",
+	"updated": "2026-04-23T00:00:00.000Z"
+}
