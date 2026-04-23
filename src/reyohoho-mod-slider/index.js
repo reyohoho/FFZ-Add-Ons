@@ -173,6 +173,10 @@ class ModSlider extends Addon {
 
 		if (!isModerator && !isOwner) return false;
 
+		// Mirrors formatChatUser() null-guard from the original extension:
+		// system messages (separators, notices, etc.) have no user object
+		if (!msgObject?.user?.userID) return false;
+
 		const currentUser = this.site.getUser();
 		if (currentUser && msgObject.user?.userID === String(currentUser.id)) return false;
 

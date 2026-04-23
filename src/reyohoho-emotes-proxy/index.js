@@ -8,8 +8,15 @@ const STAREGE_DOMAINS = [
 const SERVICE_HOSTS = {
 	'7tv': ['7tv.io', '7tv.app', 'cdn.7tv.app'],
 	'bttv': ['api.betterttv.net', 'cdn.betterttv.net'],
-	'ffz': ['cdn.frankerfacez.com', 'api2.frankerfacez.com'],
+	'ffz': ['cdn.frankerfacez.com', 'api.frankerfacez.com', 'api2.frankerfacez.com'],
 };
+
+const API_HOSTS = new Set([
+	'7tv.io',
+	'api.betterttv.net',
+	'api.frankerfacez.com',
+	'api2.frankerfacez.com',
+]);
 
 const SETTING_PREFIX = 'addon.reyohoho-emotes-proxy';
 const BADGE_PROVIDER = 'addon.reyohoho-emotes-proxy';
@@ -27,6 +34,7 @@ class EmotesProxy extends Addon {
 
 		this._proxyBase = null;
 		this._origFetch = null;
+		this._bypassCacheUntil = 0;
 
 		this._badgeCache = new Map();
 		this._badgePending = new Set();
@@ -91,7 +99,7 @@ class EmotesProxy extends Addon {
 				sort: 3,
 				path: 'Add-Ons > ReYohoho Emotes Proxy >> Services',
 				title: 'FFZ',
-				description: 'Proxy FrankerFaceZ API and CDN requests (cdn.frankerfacez.com, api2.frankerfacez.com)',
+				description: 'Proxy FrankerFaceZ API and CDN requests (cdn.frankerfacez.com, api.frankerfacez.com, api2.frankerfacez.com)',
 				component: 'setting-check-box'
 			}
 		});
@@ -197,6 +205,14 @@ class EmotesProxy extends Addon {
 		return null;
 	}
 
+	_isApiHost(url) {
+		for (const host of API_HOSTS) {
+			if (url.includes(host))
+				return true;
+		}
+		return false;
+	}
+
 	_installFetchInterceptor() {
 		if (this._origFetch) return;
 
@@ -211,9 +227,12 @@ class EmotesProxy extends Addon {
 
 				const service = self._detectService(url);
 				if (service && self.isServiceEnabled(service)) {
-					const proxied = url.startsWith('//')
+					let proxied = url.startsWith('//')
 						? `${self._proxyBase}/https:${url}`
 						: `${self._proxyBase}/${url}`;
+
+					if (Date.now() < self._bypassCacheUntil && self._isApiHost(url))
+						proxied += (proxied.includes('?') ? '&' : '?') + '_t=' + Date.now();
 
 					if (typeof input === 'string')
 						input = proxied;
@@ -224,6 +243,11 @@ class EmotesProxy extends Addon {
 
 			return self._origFetch.call(window, input, init);
 		};
+	}
+
+	enableCacheBypass(duration = 30000) {
+		this._bypassCacheUntil = Math.max(this._bypassCacheUntil, Date.now() + duration);
+		this.log?.info?.(`Cache bypass enabled for ${duration}ms`);
 	}
 
 	_removeFetchInterceptor() {
