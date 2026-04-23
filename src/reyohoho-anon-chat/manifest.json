@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"requires": [],
+	"version": "1.0.0",
+	"short_name": "ReYohoho Anon Chat",
+	"name": "ReYohoho Anon Chat",
+	"author": "ReYohoho",
+	"description": "Adds /part and /join chat commands. /part temporarily leaves the chat (switches your IRC connection to an anonymous justinfan user) so you can keep reading without being listed as a viewer. /join rejoins the chat as yourself.",
+	"settings": "add_ons.re_yohoho_anon_chat",
+	"website": "https://t.me/ReYohoho",
+	"created": "2026-04-23T00:00:00.000Z",
+	"updated": "2026-04-23T00:00:00.000Z"
+}

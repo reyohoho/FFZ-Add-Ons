@@ -1,14 +1,17 @@
 const STAREGE_DOMAINS = [
-	'https://starege.rte.net.ru',
-	'https://starege3.rte.net.ru',
-	'https://starege5.rte.net.ru',
-	'https://starege4.rte.net.ru',
+	'https://ext.rte.net.ru:8443'
 ];
 
 const SERVICE_HOSTS = {
 	'7tv': ['7tv.io', '7tv.app', 'cdn.7tv.app'],
 	'bttv': ['api.betterttv.net', 'cdn.betterttv.net'],
 	'ffz': ['cdn.frankerfacez.com', 'api.frankerfacez.com', 'api2.frankerfacez.com'],
+};
+
+// WebSocket paths exposed by the RTE mirror per service. When a service has
+// no entry here the proxy will not attempt to wrap its socket traffic.
+const SERVICE_WS_PATHS = {
+	'7tv': '/7tv-proxy',
 };
 
 const API_HOSTS = new Set([
@@ -44,9 +47,24 @@ class EmotesProxy extends Addon {
 		this._userPaintCache = new Map();
 		this._paintPending = new Set();
 		this._paintSheet = null;
+
+		// Install the fetch interceptor and kick off the fastest-domain probe
+		// as early as possible, so 7TV/BTTV/FFZ addons loading in parallel do
+		// not miss the proxy for their initial API and CDN image requests.
+		this._readyResolve = null;
+		this._ready = new Promise(resolve => { this._readyResolve = resolve; });
+
+		this._installFetchInterceptor();
+		this._probeStarted = this._probeFastestDomain();
 	}
 
 	async onLoad() {
+		// Make sure we do not return from onLoad until the probe has settled,
+		// so that dependents which await addon load get a fully-ready proxy.
+		await this._probeStarted;
+	}
+
+	async _probeFastestDomain() {
 		try {
 			this._proxyBase = await this._findFastestDomain();
 		} catch {
@@ -54,9 +72,15 @@ class EmotesProxy extends Addon {
 		}
 
 		if (this._proxyBase)
-			this.log.info(`Using proxy domain: ${this._proxyBase}`);
+			this.log?.info?.(`Using proxy domain: ${this._proxyBase}`);
 		else
-			this.log.warn('All proxy domains unavailable, proxy disabled');
+			this.log?.warn?.('All proxy domains unavailable, proxy disabled');
+
+		this._readyResolve?.();
+	}
+
+	ready() {
+		return this._ready;
 	}
 
 	onEnable() {
@@ -128,6 +152,9 @@ class EmotesProxy extends Addon {
 			changed: () => this._togglePaints()
 		});
 
+		// Interceptor is installed eagerly in the constructor so it covers
+		// requests made by addons that load in parallel. Keep this idempotent
+		// call as a safety net in case the addon is re-enabled at runtime.
 		this._installFetchInterceptor();
 
 		this.chat.addTokenizer({
@@ -166,16 +193,39 @@ class EmotesProxy extends Addon {
 	// ================================================================
 
 	isEnabled() {
-		return this.settings.get(`${SETTING_PREFIX}.enabled`);
+		try {
+			const v = this.settings?.get?.(`${SETTING_PREFIX}.enabled`);
+			return v === undefined ? true : v;
+		} catch {
+			return true;
+		}
 	}
 
 	isServiceEnabled(service) {
-		return this.settings.get(`${SETTING_PREFIX}.${service}-enabled`) ?? false;
+		try {
+			const v = this.settings?.get?.(`${SETTING_PREFIX}.${service}-enabled`);
+			return v === undefined ? true : v;
+		} catch {
+			return true;
+		}
 	}
 
 	getProxyUrl() {
 		if (!this.isEnabled() || !this._proxyBase) return null;
 		return `${this._proxyBase}/`;
+	}
+
+	// Returns a `wss://` endpoint on the fastest RTE mirror for the given
+	// service (currently only 7TV), or null when the proxy is disabled/not
+	// ready or the service is not proxied over WebSocket.
+	getWebSocketUrl(service) {
+		if (!this.isEnabled() || !this._proxyBase) return null;
+		if (!this.isServiceEnabled(service)) return null;
+
+		const path = SERVICE_WS_PATHS[service];
+		if (!path) return null;
+
+		return this._proxyBase.replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:') + path;
 	}
 
 	applyProxy(url, service) {
@@ -219,29 +269,45 @@ class EmotesProxy extends Addon {
 		this._origFetch = window.fetch;
 		const self = this;
 
+		const rewrite = (input, url) => {
+			let proxied = url.startsWith('//')
+				? `${self._proxyBase}/https:${url}`
+				: `${self._proxyBase}/${url}`;
+
+			if (Date.now() < self._bypassCacheUntil && self._isApiHost(url))
+				proxied += (proxied.includes('?') ? '&' : '?') + '_t=' + Date.now();
+
+			if (typeof input === 'string')
+				return proxied;
+			if (input instanceof Request)
+				return new Request(proxied, input);
+			return input;
+		};
+
 		window.fetch = function(input, init) {
-			if (self._proxyBase && self.isEnabled()) {
-				const url = typeof input === 'string'
-					? input
-					: (input instanceof Request ? input.url : '');
+			if (!self.isEnabled())
+				return self._origFetch.call(window, input, init);
 
-				const service = self._detectService(url);
-				if (service && self.isServiceEnabled(service)) {
-					let proxied = url.startsWith('//')
-						? `${self._proxyBase}/https:${url}`
-						: `${self._proxyBase}/${url}`;
+			const url = typeof input === 'string'
+				? input
+				: (input instanceof Request ? input.url : '');
 
-					if (Date.now() < self._bypassCacheUntil && self._isApiHost(url))
-						proxied += (proxied.includes('?') ? '&' : '?') + '_t=' + Date.now();
+			const service = self._detectService(url);
+			if (!service || !self.isServiceEnabled(service))
+				return self._origFetch.call(window, input, init);
 
-					if (typeof input === 'string')
-						input = proxied;
-					else if (input instanceof Request)
-						input = new Request(proxied, input);
-				}
-			}
+			// Proxy base already selected: rewrite immediately.
+			if (self._proxyBase)
+				return self._origFetch.call(window, rewrite(input, url), init);
 
-			return self._origFetch.call(window, input, init);
+			// Probe still running: defer the request until we know whether a
+			// proxy is available. Keeps early 7TV/BTTV/FFZ API calls from
+			// leaking through unproxied while the fastest-domain race runs.
+			return self._ready.then(() => {
+				if (!self.isEnabled() || !self._proxyBase || !self.isServiceEnabled(service))
+					return self._origFetch.call(window, input, init);
+				return self._origFetch.call(window, rewrite(input, url), init);
+			});
 		};
 	}
 

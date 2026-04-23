@@ -64,6 +64,12 @@ export default class Socket extends FrankerFaceZ.utilities.module.Module {
 		this.on('chat:room-remove', this.roomRemove);
 		this.on('chat:receive-message', this.onReceiveMessage);
 
+		// Re-open the socket against the right endpoint when the proxy is
+		// toggled at runtime, otherwise an active connection would keep using
+		// its original (proxied or direct) host until the next reconnect.
+		this.on('settings:changed:addon.reyohoho-emotes-proxy.enabled', () => this.reconnect());
+		this.on('settings:changed:addon.reyohoho-emotes-proxy.7tv-enabled', () => this.reconnect());
+
 		this.get7TVUserData();
 	}
 
@@ -79,6 +85,14 @@ export default class Socket extends FrankerFaceZ.utilities.module.Module {
 			const resp = await this.stv_api.user.fetchUserData(user.id);
 	
 			this._user_id = resp?.user?.id || false;
+		}
+
+		// Wait for the ReYohoho proxy to finish selecting its fastest mirror
+		// before opening the WebSocket. Otherwise connect() would resolve to
+		// the direct 7TV endpoint and bypass the proxy for the whole session.
+		const proxy = this.resolve('addon.reyohoho-emotes-proxy');
+		if (proxy?.ready) {
+			try { await proxy.ready(); } catch { /* no proxy available */ }
 		}
 
 		this.connect();
@@ -350,7 +364,14 @@ export default class Socket extends FrankerFaceZ.utilities.module.Module {
 			this.log.info('Socket: Connecting to socket server...');
 		}
 
-		this.socket = new WebSocket(`/v3?app=ffz&version=${__addon_version__}`);
+		// Default 7TV events endpoint. Overridden with the ReYohoho proxy
+		// mirror (wss://<fastest>/7tv-proxy) when the proxy addon is active.
+		let wsBase = 'wss://events.7tv.io/v3';
+		const proxy = this.resolve('addon.reyohoho-emotes-proxy');
+		const proxied = proxy?.getWebSocketUrl?.('7tv');
+		if (proxied) wsBase = proxied;
+
+		this.socket = new WebSocket(`${wsBase}?app=ffz&version=${__addon_version__}`);
 
 		this.socket.onopen = () => {
 			if (!is_planned_reconnect) {

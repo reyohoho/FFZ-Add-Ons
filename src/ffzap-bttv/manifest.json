@@ -6,7 +6,8 @@
 		"clips"
 	],
 	"requires": [
-		"ffzap-core"
+		"ffzap-core",
+		"reyohoho-emotes-proxy"
 	],
 	"load_events": [
 		"chat-data"

@@ -70,7 +70,7 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 		});
 	}
 
-	onEnable() {
+	async onEnable() {
 		this.on('settings:changed:addon.seventv_emotes.global_emotes', () => this.updateGlobalEmotes());
 		this.on('settings:changed:addon.seventv_emotes.emote_format', () => this.updateGlobalEmotes());
 		this.on('settings:changed:addon.seventv_emotes.emote_format', () => this.updateChannelSets());
@@ -88,6 +88,14 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 
 		this.on('chat:room-add', channel => this.updateChannelSet(channel));
 		this.on('chat:room-remove', channel => this.setChannelSet(channel, null));
+
+		// Wait for the ReYohoho proxy to pick its fastest endpoint before we
+		// construct emote CDN URLs, otherwise convertEmote() would bake in
+		// raw cdn.7tv.app links that bypass the proxy for the whole session.
+		const proxy = this.resolve('addon.reyohoho-emotes-proxy');
+		if (proxy?.ready) {
+			try { await proxy.ready(); } catch { /* fall through, no proxy */ }
+		}
 
 		this.updateGlobalEmotes();
 		this.updateChannelSets();
