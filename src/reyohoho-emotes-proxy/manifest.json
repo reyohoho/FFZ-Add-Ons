@@ -7,7 +7,7 @@
 	"name": "ReYohoho Emotes Proxy",
 	"author": "ReYohoho",
 	"description": "Transparent proxy for 7TV, BTTV and FFZ API/CDN requests via auto-discovered RTE mirrors. Provides ReYohoho chat badges and RTE/7TV username paints.",
-	"settings": "add_ons.reyohoho-emotes-proxy",
+	"settings": "add_ons.re_yohoho_emotes_proxy",
 	"website": "https://t.me/ReYohoho",
 	"created": "2025-07-06T01:05:13.806Z",
 	"updated": "2025-07-06T02:03:44.354Z"

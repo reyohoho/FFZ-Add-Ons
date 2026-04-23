@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"requires": [],
+	"version": "1.0.0",
+	"short_name": "ReYohoho User Tools",
+	"name": "ReYohoho User Tools",
+	"author": "ReYohoho",
+	"description": "Shows a Follows button on chat message hover, allowing quick access to a user's follow list.",
+	"settings": "add_ons.re_yohoho_user_tools",
+	"website": "https://t.me/ReYohoho",
+	"created": "2026-04-23T00:00:00.000Z",
+	"updated": "2026-04-23T00:00:00.000Z"
+}

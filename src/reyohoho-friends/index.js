@@ -8,6 +8,9 @@ const NOTIFICATION_POLL_MS = 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 const INITIAL_DELAY_MS = 5 * 60 * 1000;
 const BADGE_STYLE_ID = 'rte-friends-badge-style';
+const BANNER_ID = 'rte-friends-emote-menu-banner';
+const FRIENDS_URL = 'https://ext.rte.net.ru/friends';
+const EMOTE_PICKER_SELECTOR = '[data-a-target="emote-picker"], .ffz--emote-picker';
 
 class ReyohohoFriends extends Addon {
 	constructor(...args) {
@@ -25,6 +28,7 @@ class ReyohohoFriends extends Addon {
 		this._pendingCount = 0;
 		this._currentChannel = null;
 		this._contextHandler = null;
+		this._menuWatchTimer = null;
 	}
 
 	async onEnable() {
@@ -63,6 +67,40 @@ class ReyohohoFriends extends Addon {
 		this._stopChannelWatcher();
 		this._removeCSS();
 		this._removeBadge();
+	}
+
+	_disableFriends() {
+		const key = `${SETTING_PREFIX}.enabled`;
+
+		this._teardownSidebar();
+		this._teardownNotifications();
+		this._stopHeartbeat();
+		this._stopChannelWatcher();
+		this._removeBadge();
+
+		let wrote = false;
+		for (let id = 0; id < 32; id++) {
+			let profile;
+			try {
+				profile = this.settings.profile(id);
+			} catch {
+				continue;
+			}
+			if (!profile) continue;
+			if (profile.ephemeral) continue;
+			if (profile.has(key) || id === 0) {
+				profile.set(key, false);
+				wrote = true;
+			}
+		}
+		if (!wrote) {
+			for (const profile of this.settings.main_context.profiles()) {
+				if (!profile.ephemeral) {
+					profile.set(key, false);
+					break;
+				}
+			}
+		}
 	}
 
 	_onSettingChange() {
@@ -244,6 +282,7 @@ class ReyohohoFriends extends Addon {
 		this._pollRequests();
 		if (this._notifTimer == null)
 			this._notifTimer = setInterval(() => this._pollRequests(), NOTIFICATION_POLL_MS);
+		this._startMenuObserver();
 	}
 
 	_teardownNotifications() {
@@ -254,6 +293,8 @@ class ReyohohoFriends extends Addon {
 		this._pendingCount = 0;
 		this._dispatchCountEvent();
 		this._removeBadge();
+		this._stopMenuObserver();
+		this._removeBanner();
 	}
 
 	async _pollRequests() {
@@ -266,6 +307,7 @@ class ReyohohoFriends extends Addon {
 				this._pendingCount = newCount;
 				this._dispatchCountEvent();
 				this._updateBadge();
+				this._updateBanner();
 			}
 		} catch { /* ignore */ }
 	}
@@ -302,6 +344,100 @@ class ReyohohoFriends extends Addon {
 	_removeBadge() {
 		const dot = document.getElementById('rte-friends-notif-dot');
 		if (dot) dot.remove();
+	}
+
+	// ================================================================
+	//  Emote menu friend-request banner
+	// ================================================================
+
+	_startMenuObserver() {
+		if (this._menuWatchTimer != null) return;
+		this._menuWatchTimer = setInterval(() => this._updateBanner(), 750);
+		this._updateBanner();
+	}
+
+	_stopMenuObserver() {
+		if (this._menuWatchTimer != null) {
+			clearInterval(this._menuWatchTimer);
+			this._menuWatchTimer = null;
+		}
+	}
+
+	_updateBanner() {
+		const picker = document.querySelector(EMOTE_PICKER_SELECTOR);
+		if (!picker) {
+			this._removeBanner();
+			return;
+		}
+
+		if (this._pendingCount <= 0) {
+			this._removeBanner();
+			return;
+		}
+
+		let banner = picker.querySelector(`#${BANNER_ID}`);
+		if (!banner) {
+			banner = this._createBanner();
+			picker.insertBefore(banner, picker.firstChild);
+		}
+
+		const label = banner.querySelector('.rte-friends-banner__label');
+		if (label) label.textContent = this._formatBannerText(this._pendingCount);
+	}
+
+	_removeBanner() {
+		document.querySelectorAll(`#${BANNER_ID}`).forEach(el => el.remove());
+	}
+
+	_formatBannerText(count) {
+		return this.i18n.t(
+			'addon.reyohoho-friends.emoteMenu.banner',
+			'You have {count} friend {count, plural, one {request} other {requests}}',
+			{count}
+		);
+	}
+
+	_createBanner() {
+		const wrap = document.createElement('div');
+		wrap.id = BANNER_ID;
+		wrap.className = 'rte-friends-banner-wrap';
+
+		const link = document.createElement('a');
+		link.className = 'rte-friends-banner';
+		link.href = FRIENDS_URL;
+		link.target = '_blank';
+		link.rel = 'noopener noreferrer';
+		link.addEventListener('click', e => e.stopPropagation());
+
+		link.innerHTML =
+			'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;">' +
+			'<path fill-rule="evenodd" clip-rule="evenodd" d="M7 8a3 3 0 1 1 6 0 3 3 0 0 1-6 0Zm3-1a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM3 18v-1c0-2.21 1.79-4 4-4h6c2.21 0 4 1.79 4 4v1h-2v-1c0-1.1-.9-2-2-2H7c-1.1 0-2 .9-2 2v1H3Zm16-9h2v2h2v2h-2v2h-2v-2h-2v-2h2V9Z"/>' +
+			'</svg>' +
+			'<span class="rte-friends-banner__label"></span>' +
+			'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;margin-left:auto;">' +
+			'<path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6Z"/>' +
+			'</svg>';
+
+		const disableBtn = document.createElement('button');
+		disableBtn.type = 'button';
+		disableBtn.className = 'rte-friends-banner__disable';
+		disableBtn.textContent = this.i18n.t(
+			'addon.reyohoho-friends.emoteMenu.disable',
+			'Turn off Friends'
+		);
+		disableBtn.title = this.i18n.t(
+			'addon.reyohoho-friends.emoteMenu.disableTitle',
+			'Turn off the Friends feature (sidebar, notifications, and chat cards)'
+		);
+		disableBtn.addEventListener('click', e => {
+			e.preventDefault();
+			e.stopPropagation();
+			this._disableFriends();
+		});
+
+		wrap.appendChild(link);
+		wrap.appendChild(disableBtn);
+		return wrap;
 	}
 
 	// ================================================================
@@ -437,8 +573,7 @@ class ReyohohoFriends extends Addon {
 		hideButton.addEventListener('click', e => {
 			e.preventDefault();
 			e.stopPropagation();
-			this.settings.provider.set(`${SETTING_PREFIX}.enabled`, false);
-			this.settings.update(`${SETTING_PREFIX}.enabled`);
+			this._disableFriends();
 		});
 		hideButton.addEventListener('mouseenter', () => {
 			hideButton.style.color = 'var(--color-text-base,#efeff1)';
@@ -693,6 +828,50 @@ class ReyohohoFriends extends Addon {
 }
 .rte-friends-sidebar-show-more__btn:hover {
 	text-decoration: underline;
+}
+.rte-friends-banner-wrap {
+	display: flex;
+	flex-direction: column;
+	margin: 0 0 8px 0;
+	overflow: hidden;
+	border-radius: 4px;
+}
+.rte-friends-banner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--color-background-brand, #9147ff);
+	color: #fff;
+	font-size: 13px;
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+.rte-friends-banner:hover {
+	background: var(--color-background-brand-hover, #772ce8);
+	color: #fff;
+	text-decoration: none;
+}
+.rte-friends-banner__disable {
+	margin: 0;
+	border: none;
+	border-top: 1px solid rgba(255, 255, 255, 0.22);
+	padding: 7px 12px;
+	font-size: 12px;
+	font-weight: 600;
+	font-family: inherit;
+	color: rgba(255, 255, 255, 0.92);
+	background: rgba(0, 0, 0, 0.12);
+	cursor: pointer;
+	text-align: center;
+	width: 100%;
+	transition: background 0.15s, color 0.15s;
+}
+.rte-friends-banner__disable:hover {
+	background: rgba(0, 0, 0, 0.22);
+	color: #fff;
 }`;
 		document.head.appendChild(style);
 	}

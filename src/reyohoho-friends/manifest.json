@@ -7,7 +7,7 @@
 	"name": "ReYohoho Friends",
 	"author": "ReYohoho",
 	"description": "Friends list in the Twitch sidebar, activity reporting, and friend request notifications.",
-	"settings": "add_ons.reyohoho-friends",
+	"settings": "add_ons.re_yohoho_friends",
 	"website": "https://t.me/ReYohoho",
 	"created": "2025-07-06T01:05:13.806Z",
 	"updated": "2025-07-06T02:03:44.354Z"

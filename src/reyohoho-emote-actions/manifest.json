@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"requires": [],
+	"version": "1.0.0",
+	"short_name": "ReYohoho Emote Actions",
+	"name": "ReYohoho Emote Actions",
+	"author": "ReYohoho",
+	"description": "Extra mouse actions on chat emotes: middle-click opens the emote page on 7TV / BTTV / FFZ, right-click inserts the emote code into the chat input.",
+	"settings": "add_ons.re_yohoho_emote_actions",
+	"website": "https://t.me/ReYohoho",
+	"created": "2026-04-23T00:00:00.000Z",
+	"updated": "2026-04-23T00:00:00.000Z"
+}
