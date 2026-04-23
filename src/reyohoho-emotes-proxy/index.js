@@ -426,6 +426,22 @@ class EmotesProxy extends Addon {
 		return tokens;
 	}
 
+	getUserPaintByLogin(login) {
+		if (!login) return null;
+
+		const userId = this.chat?.user_id_cache?.get?.(login);
+		if (!userId) return null;
+
+		const cached = this._userPaintCache.get(userId);
+		if (cached && Date.now() - cached.ts < PAINT_CACHE_TTL)
+			return cached.paintId || null;
+
+		if (!this._paintPending.has(userId))
+			this._fetchUserPaint(userId);
+
+		return null;
+	}
+
 	_applyPaintToMsg(msg, paintId) {
 		msg.ffz_user_class = msg.ffz_user_class || new Set();
 		msg.ffz_user_class.add('rte-paint');

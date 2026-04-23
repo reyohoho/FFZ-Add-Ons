@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"requires": [],
+	"version": "1.0.0",
+	"short_name": "ReYohoho ASCII Art Font",
+	"name": "ReYohoho ASCII Art Font",
+	"author": "ReYohoho",
+	"description": "Automatically use the default Twitch font size/family for chat messages that look like ASCII art, so custom chat fonts don't break the artwork.",
+	"settings": "add_ons.re_yohoho_ascii_art_font",
+	"website": "https://t.me/ReYohoho",
+	"created": "2026-04-23T00:00:00.000Z",
+	"updated": "2026-04-23T00:00:00.000Z"
+}
