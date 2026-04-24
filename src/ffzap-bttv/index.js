@@ -379,7 +379,9 @@ class BetterTTV extends Addon {
 					'v!': Flags.Hidden | Flags.FlipY,
 					'h!': Flags.Hidden | Flags.FlipX,
 					'l!': Flags.Hidden | (Flags.Rotate90 ?? 0),
-					'r!': Flags.Hidden | (Flags.Rotate270 ?? 0)
+					'r!': Flags.Hidden | (Flags.Rotate270 ?? 0),
+					'p!': Flags.Hidden | (Flags.Party ?? 0),
+					's!': Flags.Hidden | Flags.Shake
 				};
 			}
 
