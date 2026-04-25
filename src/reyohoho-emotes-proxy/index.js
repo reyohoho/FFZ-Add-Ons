@@ -23,7 +23,7 @@ const API_HOSTS = new Set([
 
 const SETTING_PREFIX = 'addon.reyohoho-emotes-proxy';
 const BADGE_PROVIDER = 'addon.reyohoho-emotes-proxy';
-const BADGE_CACHE_TTL = 5 * 60 * 1000;
+const BADGE_REFRESH_INTERVAL = 5 * 60 * 1000;
 const PAINT_CACHE_TTL = 5 * 60 * 1000;
 
 class EmotesProxy extends Addon {
@@ -39,9 +39,14 @@ class EmotesProxy extends Addon {
 		this._origFetch = null;
 		this._bypassCacheUntil = 0;
 
-		this._badgeCache = new Map();
-		this._badgePending = new Set();
-		this._badgeUrls = new Map();
+		// url -> badgeId for badges currently registered with FFZ.
+		this._badgeUrlToId = new Map();
+		// userId -> badgeId for users currently carrying a ReYohoho badge.
+		this._userBadgeIds = new Map();
+		// Monotonic counter so refreshing the list never reuses a stale badge id.
+		this._badgeIdCounter = 0;
+		this._badgeRefreshTimer = null;
+		this._badgeRefreshInFlight = null;
 
 		this._paintDefs = new Map();
 		this._userPaintCache = new Map();
@@ -158,11 +163,6 @@ class EmotesProxy extends Addon {
 		this._installFetchInterceptor();
 
 		this.chat.addTokenizer({
-			type: 'reyohoho-badge',
-			process: this._onBadgeMessage.bind(this)
-		});
-
-		this.chat.addTokenizer({
 			type: 'reyohoho-paint',
 			priority: 100,
 			process: this._onPaintMessage.bind(this)
@@ -177,13 +177,14 @@ class EmotesProxy extends Addon {
 		});
 
 		this._registerCurrentUser();
+		this._startBadgeRefresh();
 		this._preloadPaints();
 	}
 
 	onDisable() {
 		this._removeFetchInterceptor();
-		this.chat.removeTokenizer('reyohoho-badge');
 		this.chat.removeTokenizer('reyohoho-paint');
+		this._stopBadgeRefresh();
 		this._cleanupBadges();
 		this._cleanupPaints();
 	}
@@ -347,66 +348,103 @@ class EmotesProxy extends Addon {
 	//  Badges
 	// ================================================================
 
-	_onBadgeMessage(tokens, msg) {
-		const user = msg?.user;
-		if (!user?.id || !this._proxyBase)
-			return tokens;
-		if (!this.settings.get(`${SETTING_PREFIX}.badges`))
-			return tokens;
+	_startBadgeRefresh() {
+		this._stopBadgeRefresh();
 
-		const cached = this._badgeCache.get(user.id);
-		if (cached && Date.now() - cached.ts < BADGE_CACHE_TTL)
-			return tokens;
+		// Wait for the proxy probe to settle so the very first request goes
+		// through the chosen RTE mirror. Subsequent refreshes run on a fixed
+		// interval, regardless of the result of the initial fetch.
+		this._ready.then(() => {
+			this._refreshBadgeList();
+		});
 
-		if (this._badgePending.has(user.id))
-			return tokens;
-
-		this._fetchBadge(user.id, user.login);
-		return tokens;
+		this._badgeRefreshTimer = setInterval(() => {
+			this._refreshBadgeList();
+		}, BADGE_REFRESH_INTERVAL);
 	}
 
-	async _fetchBadge(userId, userLogin) {
-		if (this._badgePending.has(userId))
-			return;
-
-		this._badgePending.add(userId);
-		try {
-			const resp = await fetch(`${this._proxyBase}/api/badge-users/${userId}`);
-
-			if (resp.status === 204 || !resp.ok) {
-				this._badgeCache.set(userId, {badgeId: null, ts: Date.now()});
-				return;
-			}
-
-			const data = await resp.json();
-			if (!data?.badgeUrl) {
-				this._badgeCache.set(userId, {badgeId: null, ts: Date.now()});
-				return;
-			}
-
-			const badgeId = this._ensureBadgeDef(data.badgeUrl);
-			this._badgeCache.set(userId, {badgeId, ts: Date.now()});
-
-			if (!this.settings.get(`${SETTING_PREFIX}.badges`))
-				return;
-
-			this.chat.getUser(userId, userLogin).addBadge(BADGE_PROVIDER, badgeId);
-			this.emit('chat:update-lines-by-user', userId, userLogin, false, true);
-		} catch (err) {
-			this.log.warn(`Badge fetch failed for ${userId}:`, err);
-			this._badgeCache.set(userId, {badgeId: null, ts: Date.now()});
-		} finally {
-			this._badgePending.delete(userId);
+	_stopBadgeRefresh() {
+		if (this._badgeRefreshTimer) {
+			clearInterval(this._badgeRefreshTimer);
+			this._badgeRefreshTimer = null;
 		}
 	}
 
+	async _refreshBadgeList() {
+		if (!this._proxyBase) return;
+		if (this._badgeRefreshInFlight) return this._badgeRefreshInFlight;
+
+		const promise = (async () => {
+			try {
+				const resp = await fetch(`${this._proxyBase}/api/badge-users`);
+				if (!resp.ok) {
+					this.log.warn(`Badge list fetch failed: ${resp.status}`);
+					return;
+				}
+
+				const list = await resp.json();
+				if (!Array.isArray(list)) {
+					this.log.warn('Badge list response is not an array');
+					return;
+				}
+
+				this._applyBadgeList(list);
+			} catch (err) {
+				this.log.warn('Failed to refresh badge list:', err);
+			} finally {
+				this._badgeRefreshInFlight = null;
+			}
+		})();
+
+		this._badgeRefreshInFlight = promise;
+		return promise;
+	}
+
+	_applyBadgeList(list) {
+		// Always wipe previous state first so changing badge URLs (the `?v=`
+		// cache buster updates on every refresh) cannot stack duplicates.
+		this._clearAllBadges();
+
+		const enabled = this.settings.get(`${SETTING_PREFIX}.badges`);
+
+		for (const entry of list) {
+			const userId = entry?.userId;
+			const badgeUrl = entry?.badgeUrl;
+			if (!userId || !badgeUrl) continue;
+
+			const badgeId = this._ensureBadgeDef(badgeUrl);
+			this._userBadgeIds.set(String(userId), badgeId);
+
+			if (enabled)
+				this.chat.getUser(String(userId)).addBadge(BADGE_PROVIDER, badgeId);
+		}
+
+		this.badges.buildBadgeCSS();
+		this.emit('chat:update-lines');
+	}
+
+	_clearAllBadges() {
+		// Drop our badge from every known user. Iterating all users covers any
+		// cached User instances that may not be in `_userBadgeIds` anymore.
+		for (const user of this.chat.iterateUsers())
+			user.removeAllBadges(BADGE_PROVIDER);
+
+		// Drop FFZ-side badge definitions as well so changing image URLs do
+		// not leave orphaned entries lying around between refreshes.
+		for (const badgeId of this._badgeUrlToId.values())
+			this.badges.removeBadge(badgeId, false);
+
+		this._badgeUrlToId.clear();
+		this._userBadgeIds.clear();
+	}
+
 	_ensureBadgeDef(url) {
-		const existing = this._badgeUrls.get(url);
+		const existing = this._badgeUrlToId.get(url);
 		if (existing)
 			return existing;
 
-		const id = `addon.reyohoho-emotes-proxy.badge-${this._badgeUrls.size}`;
-		this._badgeUrls.set(url, id);
+		const id = `addon.reyohoho-emotes-proxy.badge-${++this._badgeIdCounter}`;
+		this._badgeUrlToId.set(url, id);
 
 		this.badges.loadBadgeData(id, {
 			id,
@@ -416,7 +454,7 @@ class EmotesProxy extends Addon {
 			urls: {1: url, 2: url, 4: url},
 			click_url: 'https://t.me/ReYohoho',
 			no_invert: true
-		});
+		}, false);
 
 		return id;
 	}
@@ -427,23 +465,14 @@ class EmotesProxy extends Addon {
 			for (const user of this.chat.iterateUsers())
 				user.removeAllBadges(BADGE_PROVIDER);
 		} else {
-			for (const [userId, cache] of this._badgeCache) {
-				if (cache.badgeId)
-					this.chat.getUser(userId).addBadge(BADGE_PROVIDER, cache.badgeId);
-			}
+			for (const [userId, badgeId] of this._userBadgeIds)
+				this.chat.getUser(userId).addBadge(BADGE_PROVIDER, badgeId);
 		}
 		this.emit('chat:update-lines');
 	}
 
 	_cleanupBadges() {
-		for (const user of this.chat.iterateUsers())
-			user.removeAllBadges(BADGE_PROVIDER);
-
-		for (const badgeId of this._badgeUrls.values())
-			this.badges.removeBadge(badgeId, false);
-
-		this._badgeUrls.clear();
-		this._badgeCache.clear();
+		this._clearAllBadges();
 		this.badges.buildBadgeCSS();
 		this.emit('chat:update-lines');
 	}
