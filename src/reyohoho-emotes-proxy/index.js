@@ -26,6 +26,16 @@ const BADGE_PROVIDER = 'addon.reyohoho-emotes-proxy';
 const BADGE_REFRESH_INTERVAL = 5 * 60 * 1000;
 const PAINT_CACHE_TTL = 5 * 60 * 1000;
 
+// RTE backend exposes one endpoint per badge "kind". The order here also
+// controls visual ordering in chat: lower `slot` numbers render to the
+// left, so staff badges sit just before regular ReYohoho badges. Both
+// kinds use the same provider so a single refresh-cycle can wipe and
+// re-apply them atomically without leaving stale entries behind.
+const BADGE_KINDS = [
+	{key: 'staff', path: '/api/staff-users', title: 'ReYohoho Staff', slot: 69},
+	{key: 'main', path: '/api/badge-users', title: 'ReYohoho', slot: 70}
+];
+
 class EmotesProxy extends Addon {
 	constructor(...args) {
 		super(...args);
@@ -39,9 +49,12 @@ class EmotesProxy extends Addon {
 		this._origFetch = null;
 		this._bypassCacheUntil = 0;
 
-		// url -> badgeId for badges currently registered with FFZ.
+		// `${kind}:${url}` -> badgeId for badges currently registered with FFZ.
+		// Keying by kind keeps the staff and main definitions distinct even if
+		// they ever happen to share an image URL (different titles/slots).
 		this._badgeUrlToId = new Map();
-		// userId -> badgeId for users currently carrying a ReYohoho badge.
+		// userId -> Set<badgeId>. A user can carry multiple ReYohoho badges
+		// at once (e.g. supporter + staff), so we track them as a set.
 		this._userBadgeIds = new Map();
 		// Monotonic counter so refreshing the list never reuses a stale badge id.
 		this._badgeIdCounter = 0;
@@ -376,19 +389,30 @@ class EmotesProxy extends Addon {
 
 		const promise = (async () => {
 			try {
-				const resp = await fetch(`${this._proxyBase}/api/badge-users`);
-				if (!resp.ok) {
-					this.log.warn(`Badge list fetch failed: ${resp.status}`);
-					return;
-				}
+				// Pull every badge kind in parallel so a slow staff endpoint
+				// cannot delay the regular badge list (or vice versa).
+				const results = await Promise.all(BADGE_KINDS.map(async kind => {
+					try {
+						const resp = await fetch(`${this._proxyBase}${kind.path}`);
+						if (!resp.ok) {
+							this.log.warn(`Badge list fetch failed for ${kind.key}: ${resp.status}`);
+							return {kind, list: []};
+						}
 
-				const list = await resp.json();
-				if (!Array.isArray(list)) {
-					this.log.warn('Badge list response is not an array');
-					return;
-				}
+						const list = await resp.json();
+						if (!Array.isArray(list)) {
+							this.log.warn(`Badge list response for ${kind.key} is not an array`);
+							return {kind, list: []};
+						}
 
-				this._applyBadgeList(list);
+						return {kind, list};
+					} catch (err) {
+						this.log.warn(`Failed to fetch ${kind.key} badges:`, err);
+						return {kind, list: []};
+					}
+				}));
+
+				this._applyBadgeLists(results);
 			} catch (err) {
 				this.log.warn('Failed to refresh badge list:', err);
 			} finally {
@@ -400,23 +424,32 @@ class EmotesProxy extends Addon {
 		return promise;
 	}
 
-	_applyBadgeList(list) {
+	_applyBadgeLists(results) {
 		// Always wipe previous state first so changing badge URLs (the `?v=`
 		// cache buster updates on every refresh) cannot stack duplicates.
 		this._clearAllBadges();
 
 		const enabled = this.settings.get(`${SETTING_PREFIX}.badges`);
 
-		for (const entry of list) {
-			const userId = entry?.userId;
-			const badgeUrl = entry?.badgeUrl;
-			if (!userId || !badgeUrl) continue;
+		for (const {kind, list} of results) {
+			for (const entry of list) {
+				const userId = entry?.userId;
+				const badgeUrl = entry?.badgeUrl;
+				if (!userId || !badgeUrl) continue;
 
-			const badgeId = this._ensureBadgeDef(badgeUrl);
-			this._userBadgeIds.set(String(userId), badgeId);
+				const badgeId = this._ensureBadgeDef(kind, badgeUrl);
+				const userKey = String(userId);
 
-			if (enabled)
-				this.chat.getUser(String(userId)).addBadge(BADGE_PROVIDER, badgeId);
+				let bag = this._userBadgeIds.get(userKey);
+				if (!bag) {
+					bag = new Set();
+					this._userBadgeIds.set(userKey, bag);
+				}
+				bag.add(badgeId);
+
+				if (enabled)
+					this.chat.getUser(userKey).addBadge(BADGE_PROVIDER, badgeId);
+			}
 		}
 
 		this.badges.buildBadgeCSS();
@@ -438,18 +471,19 @@ class EmotesProxy extends Addon {
 		this._userBadgeIds.clear();
 	}
 
-	_ensureBadgeDef(url) {
-		const existing = this._badgeUrlToId.get(url);
+	_ensureBadgeDef(kind, url) {
+		const cacheKey = `${kind.key}:${url}`;
+		const existing = this._badgeUrlToId.get(cacheKey);
 		if (existing)
 			return existing;
 
 		const id = `addon.reyohoho-emotes-proxy.badge-${++this._badgeIdCounter}`;
-		this._badgeUrlToId.set(url, id);
+		this._badgeUrlToId.set(cacheKey, id);
 
 		this.badges.loadBadgeData(id, {
 			id,
-			title: 'ReYohoho',
-			slot: 70,
+			title: kind.title,
+			slot: kind.slot,
 			image: url,
 			urls: {1: url, 2: url, 4: url},
 			click_url: 'https://t.me/ReYohoho',
@@ -465,8 +499,11 @@ class EmotesProxy extends Addon {
 			for (const user of this.chat.iterateUsers())
 				user.removeAllBadges(BADGE_PROVIDER);
 		} else {
-			for (const [userId, badgeId] of this._userBadgeIds)
-				this.chat.getUser(userId).addBadge(BADGE_PROVIDER, badgeId);
+			for (const [userId, badgeIds] of this._userBadgeIds) {
+				const user = this.chat.getUser(userId);
+				for (const badgeId of badgeIds)
+					user.addBadge(BADGE_PROVIDER, badgeId);
+			}
 		}
 		this.emit('chat:update-lines');
 	}
