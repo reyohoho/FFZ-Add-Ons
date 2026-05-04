@@ -5,7 +5,7 @@ const STAREGE_DOMAINS = [
 const SERVICE_HOSTS = {
 	'7tv': ['7tv.io', '7tv.app', 'cdn.7tv.app'],
 	'bttv': ['api.betterttv.net', 'cdn.betterttv.net'],
-	'ffz': ['cdn.frankerfacez.com', 'api.frankerfacez.com', 'api2.frankerfacez.com'],
+	'ffz': ['cdn.frankerfacez.com', 'cdn2.frankerfacez.com', 'api.frankerfacez.com', 'api2.frankerfacez.com'],
 };
 
 // WebSocket paths exposed by the RTE mirror per service. When a service has
@@ -141,7 +141,7 @@ class EmotesProxy extends Addon {
 				sort: 3,
 				path: 'Add-Ons > ReYohoho Emotes Proxy >> Services',
 				title: 'FFZ',
-				description: 'Proxy FrankerFaceZ API and CDN requests (cdn.frankerfacez.com, api.frankerfacez.com, api2.frankerfacez.com)',
+				description: 'Proxy FrankerFaceZ API and CDN requests (cdn.frankerfacez.com, cdn2.frankerfacez.com, api.frankerfacez.com, api2.frankerfacez.com)',
 				component: 'setting-check-box'
 			}
 		});
