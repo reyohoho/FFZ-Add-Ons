@@ -73,7 +73,11 @@ const COMMANDS = [
 	{name: 'squishy', description: 'Usage: "/squishy" - Paste a Squishy5 copypasta'},
 	{name: 'lurk', description: 'Usage: "/lurk" - Tell chat you are lurking'},
 	{name: 'barrelroll', description: 'Usage: "/barrelroll" - Rotate the page'},
-	{name: 'party', description: 'Usage: "/party" - Make the page flash colors'},
+	{
+		name: 'party',
+		description: 'Usage: "/party [on|off]" - Toggle a Party color filter on the page',
+		commandArgs: [{name: 'state', isRequired: false}]
+	},
 	{name: 'rte', description: 'Usage: "/rte" - ReYohoho Twitch Extension!'},
 	{
 		name: 'b',
@@ -150,6 +154,7 @@ class ReYohohoChatCommands extends Addon {
 		this.off('chat:get-tab-commands', this.onGetTabCommands, this);
 		this.off('chat:pre-send-message', this.onPreSendMessage, this);
 		this._closePastaWindow();
+		document.body.classList.remove('rte-chat-command-party');
 		document.getElementById(STYLE_ID)?.remove();
 	}
 
@@ -209,7 +214,7 @@ class ReYohohoChatCommands extends Addon {
 				case 'barrelroll':
 					return this._temporaryBodyClass('rte-chat-command-barrel-roll', 2000);
 				case 'party':
-					return this._temporaryBodyClass('rte-chat-command-party', 5000);
+					return this._togglePartyClass(args, event);
 				case 'rte':
 					return this._sendMessage(event, 'ReYohoho Twitch Extension! reyohohoNice');
 				case 'b':
@@ -384,6 +389,24 @@ class ReYohohoChatCommands extends Addon {
 	_temporaryBodyClass(className, duration) {
 		document.body.classList.add(className);
 		setTimeout(() => document.body.classList.remove(className), duration);
+	}
+
+	_togglePartyClass(args, event) {
+		const arg = (args || '').trim().toLowerCase();
+		const className = 'rte-chat-command-party';
+		const current = document.body.classList.contains(className);
+
+		let next;
+		if (['on', 'enable', 'enabled', '1', 'true', 'yes'].includes(arg)) next = true;
+		else if (['off', 'disable', 'disabled', '0', 'false', 'no'].includes(arg)) next = false;
+		else if (arg === '' || arg === 'toggle') next = !current;
+		else {
+			this._addNotice(event._inst, 'Usage: /party [on|off]');
+			return;
+		}
+
+		document.body.classList.toggle(className, next);
+		this._addNotice(event._inst, `Party filter is now ${next ? 'ON' : 'OFF'}.`);
 	}
 
 	_openPastaWindow(query, inst) {
@@ -677,7 +700,7 @@ class ReYohohoChatCommands extends Addon {
 }
 
 .rte-chat-command-party {
-	animation: rte-party 0.5s linear infinite;
+	animation: rte-party 1.5s linear infinite;
 }
 
 @keyframes rte-barrel-roll {
@@ -686,8 +709,8 @@ class ReYohohoChatCommands extends Addon {
 }
 
 @keyframes rte-party {
-	0% { filter: hue-rotate(0deg); }
-	100% { filter: hue-rotate(360deg); }
+	0% { filter: sepia(0.5) hue-rotate(0deg) saturate(2.5); }
+	100% { filter: sepia(0.5) hue-rotate(360deg) saturate(2.5); }
 }
 `;
 		document.head.appendChild(style);
