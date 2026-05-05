@@ -305,7 +305,14 @@ class InlineTab extends Addon {
 
 		const enabled = this.enabled || this.enabling;
 
-		for(const provider of inst.autocompleteInputRef.providers) {
+		// Some chat-input instances may not yet have an
+		// `autocompleteInputRef` (e.g. when settings change before the
+		// component finishes mounting). Bail out silently in that case.
+		const providers = inst.autocompleteInputRef?.providers;
+		if ( ! providers )
+			return;
+
+		for(const provider of providers) {
 			let should_fix = enabled;
 			if ( enabled ) {
 				const type = provider.autocompleteType;
@@ -499,7 +506,14 @@ class InlineTab extends Addon {
 		const code = event.charCode || event.keyCode,
 			current = inst.ffzGetValue();
 
-		if ( code === KEYS.Tab && current?.length > 0 ) {
+		// Arrow keys navigate the suggestion list once it is open,
+		// behaving like Tab / Shift+Tab. They do nothing special when
+		// no suggestions are active so the caret can move normally.
+		const isTab = code === KEYS.Tab,
+			isArrowDown = code === KEYS.ArrowDown && inst.ffztc_position !== -1,
+			isArrowUp = code === KEYS.ArrowUp && inst.ffztc_position !== -1;
+
+		if ( (isTab && current?.length > 0) || isArrowDown || isArrowUp ) {
 			event.preventDefault();
 			event.stopPropagation();
 			event.stopImmediatePropagation();
@@ -544,7 +558,8 @@ class InlineTab extends Addon {
 			}
 
 			if ( suggestions.length > 0 ) {
-				pos += event.shiftKey ? -1 : 1;
+				const goBack = isArrowUp || (isTab && event.shiftKey);
+				pos += goBack ? -1 : 1;
 				if ( pos >= suggestions.length )
 					pos = 0;
 				else if ( pos < 0 )
