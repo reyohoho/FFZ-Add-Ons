@@ -7,6 +7,9 @@ const ANON_USERNAME_PREFIX = 'justinfan';
 const PART_REGEX = /^\/part\s*$/i;
 const JOIN_REGEX = /^\/join\s*$/i;
 
+// Default (English) phrases. They are kept here so the addon stays usable
+// when the i18n module isn't available; whenever it is, these strings act as
+// fallback values for the corresponding keys.
 const NOTICE_PART = 'ReYohoho: [Anon Chat] Logging you out of chat...';
 const NOTICE_JOIN = 'ReYohoho: [Anon Chat] Logging you into chat...';
 const NOTICE_BLOCKED = "You can't send messages when Anon Chat is enabled. Type /join to rejoin the chat.";
@@ -18,6 +21,7 @@ class AnonChat extends Addon {
 
 		this.inject('settings');
 		this.inject('site');
+		this.inject('i18n');
 		this.injectAs('siteChat', 'site.chat');
 	}
 
@@ -77,7 +81,7 @@ class AnonChat extends Addon {
 		const inst = event._inst || this._getService();
 		if (this._isAnon(inst)) {
 			event.preventDefault();
-			this._addNotice(inst, NOTICE_BLOCKED);
+			this._addNotice(inst, this._t('addon.reyohoho-anon-chat.notice.blocked', NOTICE_BLOCKED));
 		}
 	}
 
@@ -88,13 +92,19 @@ class AnonChat extends Addon {
 		event.commands.push(
 			{
 				name: 'part',
-				description: 'Temporarily leave the chat (anonymous mode).',
+				description: this._t(
+					'addon.reyohoho-anon-chat.command.part.description',
+					'Temporarily leave the chat (anonymous mode).'
+				),
 				permissionLevel: 0,
 				ffz_group: 'ReYohoho'
 			},
 			{
 				name: 'join',
-				description: 'Rejoin the chat as yourself after /part.',
+				description: this._t(
+					'addon.reyohoho-anon-chat.command.join.description',
+					'Rejoin the chat as yourself after /part.'
+				),
 				permissionLevel: 0,
 				ffz_group: 'ReYohoho'
 			}
@@ -111,11 +121,19 @@ class AnonChat extends Addon {
 		const target = inst || this._getService();
 
 		if (!user?.login) {
-			this._addNotice(target, NOTICE_NOT_LOGGED_IN);
+			this._addNotice(target, this._t('addon.reyohoho-anon-chat.notice.notLoggedIn', NOTICE_NOT_LOGGED_IN));
 			return;
 		}
 
 		this._changeUser(target, user.login, false);
+	}
+
+	_t(key, fallback, data) {
+		try {
+			return this.i18n?.t?.(key, fallback, data) ?? fallback;
+		} catch (_) {
+			return fallback;
+		}
 	}
 
 	_getService() {
@@ -146,7 +164,12 @@ class AnonChat extends Addon {
 			return;
 		}
 
-		this._addNotice(inst, logout ? NOTICE_PART : NOTICE_JOIN);
+		this._addNotice(
+			inst,
+			logout
+				? this._t('addon.reyohoho-anon-chat.notice.part', NOTICE_PART)
+				: this._t('addon.reyohoho-anon-chat.notice.join', NOTICE_JOIN)
+		);
 
 		try {
 			socket.send('QUIT');

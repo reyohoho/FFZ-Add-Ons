@@ -15,7 +15,16 @@ class UserTools extends Addon {
 		super(...args);
 
 		this.inject('settings');
+		this.inject('i18n');
 		this.inject('chat.actions');
+	}
+
+	_t(key, fallback, data) {
+		try {
+			return this.i18n?.t?.(key, fallback, data) ?? fallback;
+		} catch (_) {
+			return fallback;
+		}
 	}
 
 	onEnable() {
@@ -31,6 +40,7 @@ class UserTools extends Addon {
 			changed: val => this._onSettingChange(val)
 		});
 
+		const i18n = this.i18n;
 		this.actions.addAction(ACTION_KEY, {
 			presets: [{
 				appearance: {type: 'icon', icon: 'ffz-i-link-ext'}
@@ -38,11 +48,23 @@ class UserTools extends Addon {
 
 			required_context: ['user'],
 
-			title: 'Show Follows',
-			description: 'Open the follows list for this user.',
+			title: this._t('addon.reyohoho-user-tools.action.title', 'Show Follows'),
+			description: this._t(
+				'addon.reyohoho-user-tools.action.description',
+				'Open the follows list for this user.'
+			),
 
 			tooltip(data) {
-				return `Follows: ${data.user.login}`;
+				const fallback = `Follows: ${data.user.login}`;
+				try {
+					return i18n?.t?.(
+						'addon.reyohoho-user-tools.action.tooltip',
+						fallback,
+						{login: data.user.login}
+					) ?? fallback;
+				} catch (_) {
+					return fallback;
+				}
 			},
 
 			click(event, data) {

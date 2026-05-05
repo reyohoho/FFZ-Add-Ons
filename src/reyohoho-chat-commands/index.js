@@ -116,10 +116,19 @@ class ReYohohoChatCommands extends Addon {
 		this.inject('settings');
 		this.inject('site');
 		this.inject('site.apollo');
+		this.inject('i18n');
 		this.injectAs('siteChat', 'site.chat');
 		this.inject('site.chat.input');
 
 		this._pastaWindow = null;
+	}
+
+	_t(key, fallback, data) {
+		try {
+			return this.i18n?.t?.(key, fallback, data) ?? fallback;
+		} catch (_) {
+			return fallback;
+		}
 	}
 
 	onEnable() {
@@ -168,7 +177,10 @@ class ReYohohoChatCommands extends Addon {
 			event.commands.push({
 				prefix: '/',
 				name: command.name,
-				description: command.description,
+				description: this._t(
+					`addon.reyohoho-chat-commands.commands.${command.name}.description`,
+					command.description
+				),
 				permissionLevel: command.permissionLevel ?? 0,
 				commandArgs: command.commandArgs || [],
 				ffz_group: GROUP
@@ -210,13 +222,16 @@ class ReYohohoChatCommands extends Addon {
 				case 'squishy':
 					return this._sendMessage(event, 'notsquishY WHEN YOU NEED HIM notsquishY IN A JIFFY notsquishY USE THIS EMOTE notsquishY TO SUMMON SQUISHY notsquishY');
 				case 'lurk':
-					return this._sendMessage(event, '/me is now lurking');
+					return this._sendMessage(event, this._t('addon.reyohoho-chat-commands.message.lurk', '/me is now lurking'));
 				case 'barrelroll':
 					return this._temporaryBodyClass('rte-chat-command-barrel-roll', 2000);
 				case 'party':
 					return this._togglePartyClass(args, event);
 				case 'rte':
-					return this._sendMessage(event, 'ReYohoho Twitch Extension! reyohohoNice');
+					return this._sendMessage(event, this._t(
+						'addon.reyohoho-chat-commands.message.rte',
+						'ReYohoho Twitch Extension! reyohohoNice'
+					));
 				case 'b':
 					return this._sendAlias(event, '/ban', args);
 				case 'u':
@@ -233,75 +248,137 @@ class ReYohohoChatCommands extends Addon {
 			}
 		} catch (err) {
 			this.log.error(`Error running /${name}.`, err);
-			this._addNotice(event._inst, `ReYohoho: /${name} failed.`);
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.command-failed',
+				`ReYohoho: /${name} failed.`,
+				{name}
+			));
 			return null;
 		}
 	}
 
 	async _showChatters(event) {
 		const channel = this._getChannel(event);
-		if (!channel.login) return this._addNotice(event._inst, 'Could not resolve channel.');
+		if (!channel.login) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.cannot-resolve-channel',
+			'Could not resolve channel.'
+		));
 
 		const result = await this._query(CHATTERS_QUERY, {name: channel.login});
 		const count = result?.data?.channel?.chatters?.count;
 		if (typeof count === 'number')
-			this._addNotice(event._inst, `Current Chatters: ${this._formatNumber(count)}`);
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.chatters',
+				`Current Chatters: ${this._formatNumber(count)}`,
+				{count: this._formatNumber(count)}
+			));
 		else
-			this._addNotice(event._inst, 'Could not fetch chatter count.');
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.chatters-error',
+				'Could not fetch chatter count.'
+			));
 	}
 
 	async _showUptime(event) {
 		const channel = this._getChannel(event);
-		if (!channel.id) return this._addNotice(event._inst, 'Could not resolve channel.');
+		if (!channel.id) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.cannot-resolve-channel',
+			'Could not resolve channel.'
+		));
 
 		const result = await this._query(STREAM_QUERY, {userId: channel.id});
 		const createdAt = result?.data?.user?.stream?.createdAt;
-		if (!createdAt) return this._addNotice(event._inst, 'Stream is not live.');
+		if (!createdAt) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.uptime-not-live',
+			'Stream is not live.'
+		));
 
 		const seconds = Math.max(0, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
-		this._addNotice(event._inst, `Current Uptime: ${this._formatDuration(seconds)}`);
+		const duration = this._formatDuration(seconds);
+		this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.uptime',
+			`Current Uptime: ${duration}`,
+			{duration}
+		));
 	}
 
 	async _showViewers(event) {
 		const channel = this._getChannel(event);
-		if (!channel.id) return this._addNotice(event._inst, 'Could not resolve channel.');
+		if (!channel.id) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.cannot-resolve-channel',
+			'Could not resolve channel.'
+		));
 
 		const result = await this._query(STREAM_QUERY, {userId: channel.id});
 		const count = result?.data?.user?.stream?.viewersCount;
 		if (typeof count === 'number')
-			this._addNotice(event._inst, `Current Viewers: ${this._formatNumber(count)}`);
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.viewers',
+				`Current Viewers: ${this._formatNumber(count)}`,
+				{count: this._formatNumber(count)}
+			));
 		else
-			this._addNotice(event._inst, 'Could not fetch stream.');
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.viewers-error',
+				'Could not fetch stream.'
+			));
 	}
 
 	async _showFollows(event) {
 		const channel = this._getChannel(event);
-		if (!channel.id) return this._addNotice(event._inst, 'Could not resolve channel.');
+		if (!channel.id) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.cannot-resolve-channel',
+			'Could not resolve channel.'
+		));
 
 		const result = await this._query(FOLLOWERS_QUERY, {userId: channel.id});
 		const count = result?.data?.user?.followers?.totalCount;
 		if (typeof count === 'number')
-			this._addNotice(event._inst, `Current Followers: ${this._formatNumber(count)}`);
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.follows',
+				`Current Followers: ${this._formatNumber(count)}`,
+				{count: this._formatNumber(count)}
+			));
 		else
-			this._addNotice(event._inst, 'Could not fetch follower count.');
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.follows-error',
+				'Could not fetch follower count.'
+			));
 	}
 
 	async _showFollowed(event) {
 		const user = this.site.getUser?.();
-		if (!user?.login) return this._addNotice(event._inst, 'You are not logged in.');
+		if (!user?.login) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.followed-not-logged',
+			'You are not logged in.'
+		));
 
 		const channel = this._getChannel(event);
-		if (!channel.id) return this._addNotice(event._inst, 'Could not resolve channel.');
+		if (!channel.id) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.cannot-resolve-channel',
+			'Could not resolve channel.'
+		));
 
 		const result = await this._query(FOLLOWED_QUERY, {userId: channel.id});
 		const followedAt = result?.data?.user?.self?.follower?.followedAt;
-		if (!followedAt) return this._addNotice(event._inst, `You do not follow ${channel.displayName || channel.login}.`);
+		const channelName = channel.displayName || channel.login;
+		if (!followedAt) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.followed-not',
+			`You do not follow ${channelName}.`,
+			{channel: channelName}
+		));
 
 		const followedDate = new Date(followedAt);
 		const seconds = Math.max(0, Math.round((Date.now() - followedDate.getTime()) / 1000));
+		const duration = this._formatDuration(seconds);
+		const date = followedDate.toLocaleDateString();
 		this._addNotice(
 			event._inst,
-			`You followed ${channel.displayName || channel.login} ${this._formatDuration(seconds)} ago (${followedDate.toLocaleDateString()}).`
+			this._t(
+				'addon.reyohoho-chat-commands.notice.followed',
+				`You followed ${channelName} ${duration} ago (${date}).`,
+				{channel: channelName, duration, date}
+			)
 		);
 	}
 
@@ -339,7 +416,11 @@ class ReYohohoChatCommands extends Addon {
 
 	_sendAlias(event, command, args) {
 		const trimmed = args.trim();
-		if (!trimmed) return this._addNotice(event._inst, `Usage: ${command} <login>`);
+		if (!trimmed) return this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.shortcut-usage',
+			`Usage: ${command} <login>`,
+			{command}
+		));
 		return this._sendMessage(event, `${command} ${trimmed}`);
 	}
 
@@ -401,17 +482,27 @@ class ReYohohoChatCommands extends Addon {
 		else if (['off', 'disable', 'disabled', '0', 'false', 'no'].includes(arg)) next = false;
 		else if (arg === '' || arg === 'toggle') next = !current;
 		else {
-			this._addNotice(event._inst, 'Usage: /party [on|off]');
+			this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.party-usage',
+				'Usage: /party [on|off]'
+			));
 			return;
 		}
 
 		document.body.classList.toggle(className, next);
-		this._addNotice(event._inst, `Party filter is now ${next ? 'ON' : 'OFF'}.`);
+		this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.party-state',
+			`Party filter is now ${next ? 'ON' : 'OFF'}.`,
+			{state: next ? 'on' : 'off'}
+		));
 	}
 
 	_openPastaWindow(query, inst) {
 		if (!query) {
-			this._addNotice(inst, 'Usage: /pasta <query>');
+			this._addNotice(inst, this._t(
+				'addon.reyohoho-chat-commands.notice.pasta-usage',
+				'Usage: /pasta <query>'
+			));
 			return;
 		}
 
