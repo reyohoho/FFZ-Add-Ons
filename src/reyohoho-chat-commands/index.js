@@ -2,7 +2,8 @@ import gql from 'graphql-tag';
 
 const SETTING_PREFIX = 'addon.reyohoho-chat-commands';
 const GROUP = 'ReYohoho';
-const PASTA_API = 'https://ext.rte.net.ru:8443/api/pastas';
+const PASTA_API = 'https://ext.rte.net.ru:8443/api/pastas/search';
+const RTE_FRONTEND_URL = 'https://ext.rte.net.ru';
 const STYLE_ID = 'rte-chat-commands-style';
 
 const CHATTERS_QUERY = gql`
@@ -58,6 +59,12 @@ const COMMANDS = [
 		name: 'pasta',
 		description: 'Usage: "/pasta query" - Search for copypastas',
 		commandArgs: [{name: 'query', isRequired: true}],
+		setting: 'pasta'
+	},
+	{
+		name: 'pastaadd',
+		description: 'Usage: "/pastaadd" - Add a new copypasta on the RTE website',
+		commandArgs: [],
 		setting: 'pasta'
 	},
 	{name: 'chatters', description: 'Usage: "/chatters" - Show the number of chatters in the chat'},
@@ -205,8 +212,10 @@ class ReYohohoChatCommands extends Addon {
 	_runCommand(name, args, event) {
 		try {
 			switch (name) {
-				case 'pasta':
-					return this._openPastaWindow(args.trim(), event._inst);
+			case 'pasta':
+				return this._openPastaWindow(args.trim(), event._inst);
+			case 'pastaadd':
+				return window.open(`${RTE_FRONTEND_URL}/pasta/add`, '_blank', 'noopener,noreferrer');
 				case 'chatters':
 					return this._showChatters(event);
 				case 'uptime':
