@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"requires": ["reyohoho-emotes-proxy"],
+	"version": "1.0.0",
+	"short_name": "RTE Live Rewind",
+	"name": "ReYohoho Live Rewind",
+	"author": "ReYohoho",
+	"description": "Adds a seek bar on live streams via the channel VOD recording. Requires an active RTE subscription and VOD storage enabled on the channel.",
+	"settings": "add_ons.re_yohoho_live_rewind",
+	"website": "https://ext.rte.net.ru",
+	"created": "2026-08-28T07:00:00.000Z",
+	"updated": "2026-08-28T07:00:00.000Z"
+}

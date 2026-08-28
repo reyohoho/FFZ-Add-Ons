@@ -1,0 +1,239 @@
+.rte-lr-vod-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.rte-lr-seekbar-area {
+  padding: 0 16px;
+  user-select: none;
+}
+
+.rte-lr-seekbar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+}
+
+.rte-lr-elapsed {
+  font-family: Inter, 'Noto Sans Arabic', Roobert, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: #fff;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.rte-lr-live-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  color: #efeff1;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 0;
+  outline: none;
+  transition: background-color 0.1s ease;
+}
+
+.rte-lr-live-label:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.rte-lr-live-label--at-live {
+  background: #eb0400;
+  gap: 0;
+}
+
+.rte-lr-live-label--at-live:hover {
+  background: #c50300;
+}
+
+.rte-lr-live-label--at-live svg {
+  display: none;
+}
+
+.rte-lr-live-text {
+  font-family: Inter, 'Noto Sans Arabic', Roobert, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #efeff1;
+  line-height: 1;
+}
+
+.rte-lr-live-label svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
+.rte-lr-seekbar-row {
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+.rte-lr-seekbar {
+  position: relative;
+  flex: 1;
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  box-sizing: content-box;
+  height: 4px;
+}
+
+.rte-lr-seekbar-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+}
+
+.rte-lr-seekbar-played {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: #9147ff;
+  pointer-events: none;
+}
+
+.rte-lr-seekbar-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+  top: 50%;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.rte-lr-seekbar:hover .rte-lr-seekbar-thumb,
+.rte-lr-seekbar--active .rte-lr-seekbar-thumb {
+  opacity: 1;
+}
+
+.rte-lr-seekbar--live .rte-lr-seekbar-thumb {
+  opacity: 0 !important;
+}
+
+.rte-lr-seekbar-tooltip {
+  position: absolute;
+  bottom: 100%;
+  margin-bottom: 8px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #efeff1;
+  font-family: Inter, 'Noto Sans Arabic', Roobert, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  display: none;
+  user-select: none;
+}
+
+.rte-lr-seekbar:hover .rte-lr-seekbar-tooltip {
+  display: block;
+}
+
+.rte-lr-live-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.rte-lr-live-dot-indicator {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #eb0400;
+}
+
+@keyframes rte-lr-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.rte-lr-live-dot-indicator--pulse {
+  animation: rte-lr-pulse 2s ease-in-out infinite;
+}
+
+.ffz--rte-lr-sub-notice {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  background: rgba(145, 71, 255, 0.12);
+  border: 1px solid rgba(145, 71, 255, 0.35);
+  color: #bf94ff;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ffz--rte-lr-sub-notice a {
+  color: #d4b8ff;
+  text-decoration: underline;
+}
+
+.ffz--rte-lr-sub-notice a:hover {
+  color: #efe0ff;
+}
+
+.ffz--rte-lr-sub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: 4px;
+  background: rgba(145, 71, 255, 0.2);
+  border: 1px solid rgba(145, 71, 255, 0.55);
+  color: #bf94ff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.ffz--rte-lr-sub-badge img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
