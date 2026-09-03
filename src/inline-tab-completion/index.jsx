@@ -62,7 +62,7 @@ class InlineTab extends Addon {
 		});
 
 		this.settings.add('addon.inlinetab.no_mentions', {
-			default: false,
+			default: true,
 			ui: {
 				path: 'Add-Ons > Inline Tab >> Content',
 				title: 'Do not include users in inline tab-completion.',
