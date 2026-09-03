@@ -1,0 +1,13 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"version": "1.0.0",
+	"short_name": "RTE Viewer Card",
+	"name": "ReYohoho Viewer Card",
+	"author": "ReYohoho",
+	"description": "Restores stats that Twitch removed from the chat viewer card: account creation date, follow date, follower count, and gifted-subscription info.",
+	"settings": "add_ons.re_yohoho_viewer_card",
+	"website": "https://t.me/ReYohoho",
+	"created": "2026-09-03T00:00:00.000Z",
+	"updated": "2026-09-03T00:00:00.000Z"
+}
