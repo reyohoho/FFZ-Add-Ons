@@ -20,7 +20,6 @@ class ReyohohoLiveRewind extends Addon {
 		this.hasAccess = false;
 		this.ready = false;
 		this._contextHandler = null;
-		this._onSettingChange = null;
 		this._proxyBase = null;
 		this._styleLink = null;
 		this._bootstrapping = false;
@@ -36,9 +35,6 @@ class ReyohohoLiveRewind extends Addon {
 		this._injectCSS();
 		this._bootstrapping = true;
 		this._registerSettings();
-		this._onSettingChange = () => this._syncController();
-		this.settings.on(`changed.${SETTING_PREFIX}.enabled`, this._onSettingChange, this);
-		this.settings.on(`changed.${SETTING_PREFIX}.user-set`, this._onSettingChange, this);
 
 		void this.ensureReady().finally(() => {
 			this._bootstrapping = false;
@@ -50,11 +46,6 @@ class ReyohohoLiveRewind extends Addon {
 	onDisable() {
 		this._removeCSS();
 		this._stopContextWatcher();
-		if (this._onSettingChange) {
-			this.settings.off(`changed.${SETTING_PREFIX}.enabled`, this._onSettingChange, this);
-			this.settings.off(`changed.${SETTING_PREFIX}.user-set`, this._onSettingChange, this);
-			this._onSettingChange = null;
-		}
 		this._revokeAccess();
 		this.ready = false;
 		this._bootstrapping = false;
@@ -72,9 +63,12 @@ class ReyohohoLiveRewind extends Addon {
 		return !!this.settings.get(`${SETTING_PREFIX}.enabled`);
 	}
 
-	_setSettingEnabled(value) {
-		this.settings.set(`${SETTING_PREFIX}.user-set`, true);
-		this.settings.set(`${SETTING_PREFIX}.enabled`, value);
+	// SettingsManager has no set(): write into the active profile the current value comes from (the first one that
+	// has the key), so the change is not shadowed by it; the default profile when no profile sets the key
+	_writeSetting(key, value) {
+		const full = `${SETTING_PREFIX}.${key}`;
+		const profile = [...this.settings.main_context.profiles()].find(p => p.has(full)) ?? this.settings.profile(0);
+		profile?.set(full, value);
 	}
 
 	_registerSettings() {
@@ -113,13 +107,13 @@ class ReyohohoLiveRewind extends Addon {
 			return;
 		}
 
-		this.settings.set(`${SETTING_PREFIX}.user-set`, true);
+		this._writeSetting('user-set', true);
 
 		if (value && !this.hasAccess) {
 			void this.ensureReady(true).then(() => {
 				if (!this.hasAccess) {
 					this._revokeAccess();
-					this.settings.set(`${SETTING_PREFIX}.enabled`, false);
+					this._writeSetting('enabled', false);
 					openSubscriptionPage();
 				} else {
 					this._syncController();
