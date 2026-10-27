@@ -20,10 +20,16 @@ import { Directory_Thumbnails } from "./settings/directory/thumbnails";
 import { Inventory_Drops } from "./settings/inventory/drops";
 
 // Twilight
+import { Twilight_AiConsent } from "./settings/twilight/ai-consent";
 import { Twilight_Clips } from "./settings/twilight/clips";
+import { Twilight_CSS } from "./settings/twilight/custom-style";
+import { Twilight_Experiments } from "./settings/twilight/experiments";
+import { Twilight_IconFinder } from "./settings/twilight/icon-finder";
+import { Twilight_Moderator } from "./settings/twilight/moderator";
 import { Twilight_Prime } from "./settings/twilight/prime";
 import { Twilight_Sidebar } from "./settings/twilight/sidebar";
 import { Twilight_Timestamp } from "./settings/twilight/timestamp";
+import { Twilight_Tooltip } from "./settings/twilight/tooltips";
 import { Twilight_Whispers } from "./settings/twilight/whispers";
 
 import SETTING_SLIDER from "./components/main_menu/styles/setting-slider.scss";
@@ -60,14 +66,20 @@ class Trubbel extends Addon {
       this.inject(Inventory_Drops);
 
       // Twilight
+      this.inject(Twilight_AiConsent);
+      this.inject(Twilight_CSS);
+      this.inject(Twilight_IconFinder);
+      this.inject(Twilight_Moderator);
       this.inject(Twilight_Prime);
       this.inject(Twilight_Sidebar);
       this.inject(Twilight_Timestamp);
+      this.inject(Twilight_Tooltip);
       this.inject(Twilight_Whispers);
     }
 
-    // Twilight - Clips
+    // Twilight
     this.inject(Twilight_Clips);
+    this.inject(Twilight_Experiments);
 
     this.loadDevBadge();
   }

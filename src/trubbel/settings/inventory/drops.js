@@ -1,5 +1,7 @@
+import ChannelDrops from "../../modules/channel/drops/channel-drop";
 import AutoClaimDrops from "../../modules/inventory/claim";
 import CollapsibleDrops from "../../modules/inventory/collapsible";
+import DetailedDrops from "../../modules/inventory/detailed";
 
 const { ManagedStyle } = FrankerFaceZ.utilities.dom;
 
@@ -11,10 +13,33 @@ export class Inventory_Drops extends FrankerFaceZ.utilities.module.Module {
 
     this.inject("settings");
     this.inject("site");
+    this.inject("i18n");
     this.inject("site.router");
+    this.inject("site.apollo");
 
+    this.channelDrops = new ChannelDrops(this);
     this.autoClaimDrops = new AutoClaimDrops(this);
     this.collapsibleDrops = new CollapsibleDrops(this);
+    this.detailedDrops = new DetailedDrops(this);
+
+    // Channel - Drops - Channel - Display drop information when available
+    this.settings.add("addon.trubbel.inventory.drops.channel", {
+      default: false,
+      requires: ["context.session.user"],
+      process(ctx, val) {
+        return ctx.get("context.session.user") ? val : false;
+      },
+      ui: {
+        sort: 0,
+        path: "Add-Ons > Trubbel\u2019s Utilities > Inventory > Drops >> Channel",
+        title: "Display drop information when available",
+        description: "Show more accurate drop details for the current stream below the player.",
+        component: "setting-check-box"
+      },
+      changed: val => this.channelDrops.handleSettingChange(val)
+    });
+
+
 
     // Inventory - Drops - Claim - Enable auto claim
     this.settings.add("addon.trubbel.inventory.drops.claim", {
@@ -64,15 +89,34 @@ export class Inventory_Drops extends FrankerFaceZ.utilities.module.Module {
       },
       changed: val => this.collapsibleDrops.handleSettingChange(val)
     });
+
+
+
+    // Inventory - Drops - Progress - Display detailed drops information
+    this.settings.add("addon.trubbel.inventory.drops.detailed", {
+      default: false,
+      ui: {
+        sort: 0,
+        path: "Add-Ons > Trubbel\u2019s Utilities > Inventory > Drops >> Progress",
+        title: "Display detailed drops information",
+        description: "Show more accurate drop information and progress.",
+        component: "setting-check-box"
+      },
+      changed: val => this.detailedDrops.handleSettingChange(val)
+    });
   }
 
   onEnable() {
     this.router.on(":route", this.navigate, this);
+    this.channelDrops.initialize();
     this.autoClaimDrops.initialize();
     this.collapsibleDrops.initialize();
+    this.detailedDrops.initialize();
   }
 
   async navigate() {
+    this.channelDrops.handleNavigation();
     this.collapsibleDrops.handleNavigation();
+    this.detailedDrops.handleNavigation();
   }
 }

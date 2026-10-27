@@ -31,6 +31,9 @@ importers:
       js-levenshtein:
         specifier: ^1.1.6
         version: 1.1.6
+      pluralmind:
+        specifier: ^2.1.1
+        version: 2.1.1
       reconnecting-websocket:
         specifier: ^4.4.0
         version: 4.4.0
@@ -2724,6 +2727,9 @@ packages:
   pkg-dir@4.2.0:
     resolution: {integrity: sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ==}
     engines: {node: '>=8'}
+
+  pluralmind@2.1.1:
+    resolution: {integrity: sha512-vJqPTYUVxXhDyKYK3h/ANHjL8cmwT8um+xU6HSmPACmXTedFfMAP6aYScnqTJB7B6mGLQcptTxObOdcrPgSfUg==}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -6603,6 +6609,8 @@ snapshots:
   pkg-dir@4.2.0:
     dependencies:
       find-up: 4.1.0
+
+  pluralmind@2.1.1: {}
 
   possible-typed-array-names@1.1.0: {}
 
