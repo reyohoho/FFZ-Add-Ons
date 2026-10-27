@@ -426,7 +426,9 @@ export default class Ambilight {
 				tip.classList.toggle('rte-ambilight-tooltip--hint', message != null);
 			});
 
-			let before = container.querySelector('button[data-a-target="player-fullscreen-button"]');
+			// Users expect theatre mode right before fullscreen, so the light goes in front of both
+			let before = container.querySelector('button[data-a-target="player-theatre-mode-button"]') ??
+				container.querySelector('button[data-a-target="player-fullscreen-button"]');
 			while (before?.parentElement && before.parentElement !== container)
 				before = before.parentElement;
 			container.insertBefore(wrapper, before?.parentElement === container ? before : null);

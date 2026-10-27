@@ -3,6 +3,7 @@ import ChannelTweaks from './channel-tweaks.js';
 import ChatResize from './chat-resize.js';
 import LiveCatchup from './live-catchup.js';
 import VodRealTime from './vod-real-time.js';
+import VolumeWheel from './volume-wheel.js';
 import STYLE_URL from './style.css';
 
 const {createElement} = FrankerFaceZ.utilities.dom;
@@ -92,6 +93,7 @@ class ReyohohoTweaks extends Addon {
 		this.vodRealTime = new VodRealTime(this);
 		this.chatResize = new ChatResize(this);
 		this.channelTweaks = new ChannelTweaks(this);
+		this.volumeWheel = new VolumeWheel(this);
 	}
 
 	onEnable() {
@@ -122,6 +124,7 @@ class ReyohohoTweaks extends Addon {
 		this.vodRealTime.update();
 		this.chatResize.update();
 		this.channelTweaks.update();
+		this.volumeWheel.update();
 	}
 
 	get(key) {
