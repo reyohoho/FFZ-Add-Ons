@@ -1,0 +1,13 @@
+{
+	"enabled": true,
+	"default_enabled": true,
+	"version": "1.0.0",
+	"short_name": "RTE Tweaks",
+	"name": "ReYohoho Tweaks",
+	"author": "ReYohoho",
+	"description": "Ambilight around the player, live catch-up, real time on VODs, chat resizing by dragging and other small tweaks from ReYohoho Twitch Extension.",
+	"settings": "add_ons.re_yohoho_tweaks",
+	"website": "https://ext.rte.net.ru",
+	"created": "2026-10-27T00:00:00.000Z",
+	"updated": "2026-10-27T00:00:00.000Z"
+}

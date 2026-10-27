@@ -111,7 +111,8 @@ const COMMANDS = [
 		commandArgs: [{name: 'username', isRequired: true}, {name: 'reason', isRequired: false}]
 	},
 	{name: 'sub', description: 'Usage: "/sub" - Shortcut for /subscribers', permissionLevel: 2},
-	{name: 'suboff', description: 'Usage: "/suboff" - Shortcut for /subscribersoff', permissionLevel: 2}
+	{name: 'suboff', description: 'Usage: "/suboff" - Shortcut for /subscribersoff', permissionLevel: 2},
+	{name: 'screenshot', description: 'Usage: "/screenshot" - Save a screenshot of the current stream frame as a PNG'}
 ];
 
 const COMMAND_MAP = new Map(COMMANDS.map(command => [command.name, command]));
@@ -236,6 +237,8 @@ class ReYohohoChatCommands extends Addon {
 					return this._temporaryBodyClass('rte-chat-command-barrel-roll', 2000);
 				case 'party':
 					return this._togglePartyClass(args, event);
+				case 'screenshot':
+					return this._takeScreenshot(event);
 				case 'rte':
 					return this._sendMessage(event, this._t(
 						'addon.reyohoho-chat-commands.message.rte',
@@ -474,6 +477,52 @@ class ReYohohoChatCommands extends Addon {
 		if (seconds || !parts.length) parts.push(`${seconds}s`);
 
 		return parts.join(' ');
+	}
+
+	_takeScreenshot(event) {
+		const container = document.querySelector('.video-player__container');
+		// During Live Rewind the visible frame is in the VOD video overlaid on the native one
+		const vodVideo = container?.querySelector('video.rte-lr-vod-video');
+		const video = vodVideo && vodVideo.style.display !== 'none'
+			? vodVideo
+			: container?.querySelector('video:not(.rte-lr-vod-video)');
+
+		if (!video?.videoWidth || !video.videoHeight)
+			return this._addNotice(event._inst, this._t(
+				'addon.reyohoho-chat-commands.notice.screenshot-not-playing',
+				'Error: Unable to take a screenshot, is the stream playing?'
+			));
+
+		const fail = () => this._addNotice(event._inst, this._t(
+			'addon.reyohoho-chat-commands.notice.screenshot-failed',
+			'Error: Unable to take a screenshot.'
+		));
+
+		const canvas = document.createElement('canvas');
+		canvas.width = video.videoWidth;
+		canvas.height = video.videoHeight;
+		try {
+			canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+		} catch (_) {
+			// drawImage throws a SecurityError if the frame is cross-origin "tainted" (e.g. some ads)
+			return fail();
+		}
+
+		canvas.toBlob(blob => {
+			if (!blob)
+				return fail();
+
+			const pad = value => String(value).padStart(2, '0');
+			const now = new Date();
+			const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(blob);
+			link.download = `${this._getChannel(event).login || 'twitch'}_${timestamp}.png`;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(link.href);
+		}, 'image/png');
 	}
 
 	_temporaryBodyClass(className, duration) {

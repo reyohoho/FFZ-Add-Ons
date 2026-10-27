@@ -1,0 +1,195 @@
+/* The light sits under the whole document (fixed, z-index -1 in the root stacking context) and shines
+   through Twitch's panels, which turn into semi-transparent "glass" while it is active. The player covers
+   the middle of the light itself, so nothing has to be cut out. Colors, falloff and blur are rendered into
+   the small canvas (renderer.js); a CSS filter here would be recomputed over the whole area on every frame. */
+.rte-ambilight {
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+
+.rte-ambilight--visible {
+  opacity: var(--rte-ambilight-opacity, 0.75);
+}
+
+/* ── Glass: only while the light is visible on a dark theme ── */
+html.tw-root--theme-dark.rte-ambilight-active body {
+  background-color: #08080a !important;
+}
+
+/* Opaque layers between the light and the page: the channel root carries the streamer color, the player
+   placeholder is a scaled black box, and the player itself has black bars that the light can fill */
+html.tw-root--theme-dark.rte-ambilight-active .channel-root,
+html.tw-root--theme-dark.rte-ambilight-active .channel-root__player [style*='background-color'],
+html.tw-root--theme-dark.rte-ambilight-active .video-player,
+html.tw-root--theme-dark.rte-ambilight-active .video-player__container,
+html.tw-root--theme-dark.rte-ambilight-active .channel-root__right-column,
+html.tw-root--theme-dark.rte-ambilight-active .channel-root__right-column > div {
+  background-color: transparent !important;
+}
+
+/* Twitch fades the channel root color (the streamer's brand color) over 0.6s; with the info block above it
+   already transparent that showed as a red/orange flash whenever the light turned on */
+html.tw-root--theme-dark.rte-ambilight-active .channel-root {
+  transition: none !important;
+}
+
+html.tw-root--theme-dark.rte-ambilight-active .channel-root__player-background {
+  visibility: hidden !important;
+}
+
+/* Text gets a soft dark outline so it stays readable on bright frames */
+html.tw-root--theme-dark.rte-ambilight-active .channel-root__info,
+html.tw-root--theme-dark.rte-ambilight-active .channel-info-content {
+  background-color: transparent !important;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 0 10px rgba(0, 0, 0, 0.35);
+}
+
+html.tw-root--theme-dark.rte-ambilight-active .top-nav__menu {
+  background-color: rgba(24, 24, 27, 0.55) !important;
+  box-shadow: none !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Clearer towards the player, denser further away where the channel names are */
+html.tw-root--theme-dark.rte-ambilight-active .side-nav {
+  background: linear-gradient(to left, rgba(38, 38, 44, 0.35), rgba(38, 38, 44, 0.65) 40px) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Same for chat, but denser overall: dark usernames must stay readable */
+html.tw-root--theme-dark.rte-ambilight-active .chat-room,
+html.tw-root--theme-dark.rte-ambilight-theatre .right-column--theatre .chat-room {
+  background: linear-gradient(to right, rgba(24, 24, 27, 0.5), rgba(24, 24, 27, 0.82) 40px) !important;
+}
+
+html.tw-root--theme-dark.rte-ambilight-active .stream-chat-header,
+html.tw-root--theme-dark.rte-ambilight-theatre .right-column--theatre .stream-chat-header {
+  background-color: rgba(24, 24, 27, 0.65) !important;
+}
+
+/* The gift and bits leaderboard strip under the chat header has an opaque background of its own */
+html.tw-root--theme-dark.rte-ambilight-active .chat-room .tw-transition > div:has([class*='bitsLeaderboard']),
+html.tw-root--theme-dark.rte-ambilight-theatre
+  .right-column--theatre
+  .chat-room
+  .tw-transition
+  > div:has([class*='bitsLeaderboard']) {
+  background-color: transparent !important;
+}
+
+/* ── Theatre mode: the page under the fixed player and chat stays as Twitch draws it; only the chat column
+   turns to glass, over a light layer of its own ── */
+html.tw-root--theme-dark.rte-ambilight-theatre .right-column--theatre .channel-root__right-column,
+html.tw-root--theme-dark.rte-ambilight-theatre .right-column--theatre .channel-root__right-column > div {
+  background-color: transparent !important;
+}
+
+/* First child of the fixed chat column (a stacking context): z-index -1 keeps it under the messages, the dark
+   base hides the page behind the column, and overflow clips the light to the column */
+.rte-ambilight-column {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: #08080a;
+}
+
+.rte-ambilight-column .rte-ambilight {
+  position: absolute;
+}
+
+/* Over the black video container but under the video: z-index -1 would drop it behind the container background */
+.rte-ambilight.rte-ambilight-bars {
+  position: absolute;
+  z-index: auto;
+}
+
+/* ── Ambilight player button ── */
+.rte-ambilight-button {
+	opacity: 0.6;
+}
+
+.rte-ambilight-button--active {
+	opacity: 1;
+}
+
+/* Hints on why the light is off are too long for one line inside the player */
+.rte-ambilight-tooltip--hint {
+	width: 260px;
+	min-width: 0;
+	white-space: normal;
+}
+
+/* ── VOD real time ── */
+.rte-vod-real-time {
+	margin: 0 auto 0 1rem;
+	opacity: 0.8;
+}
+
+/* ── Chat resize handle ── */
+.rte-chat-width-handle {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 10;
+	width: 6px;
+	cursor: ew-resize;
+	touch-action: none;
+}
+
+.rte-chat-width-handle--left {
+	left: auto;
+	right: 0;
+}
+
+.rte-chat-width-handle:hover,
+.rte-chat-width-dragging .rte-chat-width-handle {
+	background: var(--color-border-brand, #9147ff);
+	opacity: 0.6;
+}
+
+/* Dragging across the page would otherwise select text */
+.rte-chat-width-dragging,
+.rte-chat-width-dragging * {
+	user-select: none !important;
+	cursor: ew-resize !important;
+}
+
+/* Twitch animates the column and player (500ms), which makes them trail behind the cursor while dragging */
+.rte-chat-width-dragging .channel-root__right-column,
+.rte-chat-width-dragging .persistent-player,
+.rte-chat-width-dragging .channel-root__player {
+	transition: none !important;
+}
+
+/* ── Hidden elements ── */
+/* The mid-stream summary is a chat callout without a feature-specific class: match the ids its component hard-codes */
+.rte-hide-ai-summary [role='status']:has([id='summary-title'], [id='summary-survey-question']) {
+	display: none !important;
+}
+
+.rte-hide-bits-balance [data-test-selector='bits-balance-string'],
+.rte-hide-bits-balance div:has(+ [data-test-selector='bits-balance-string']) {
+	display: none !important;
+}
+
+.rte-hide-sub-upgrade [data-rte-channel-element='sub-upgrade'],
+.rte-hide-channel-notifications [data-rte-channel-element='notifications'],
+.rte-hide-bits-offer [data-rte-channel-element='bits-offer'] {
+	display: none !important;
+}
+
+/* ── Player ── */
+/* In theatre mode the fixed player sits outside the overflow-hidden page columns, so Popper flags tooltips on its
+   left-side controls (volume percent, play, mute) as reference-hidden and Twitch fades them out */
+html:has(.channel-root__scroll-area--theatre-mode) .tw-tooltip-layer [data-popper-reference-hidden='true'] {
+	opacity: 1;
+	pointer-events: auto;
+}
