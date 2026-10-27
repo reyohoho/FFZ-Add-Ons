@@ -426,17 +426,30 @@ export default class Ambilight {
 				tip.classList.toggle('rte-ambilight-tooltip--hint', message != null);
 			});
 
-			// Users expect theatre mode right before fullscreen, so the light goes in front of both
-			let before = container.querySelector('button[data-a-target="player-theatre-mode-button"]') ??
-				container.querySelector('button[data-a-target="player-fullscreen-button"]');
-			while (before?.parentElement && before.parentElement !== container)
-				before = before.parentElement;
-			container.insertBefore(wrapper, before?.parentElement === container ? before : null);
+			// The theatre button can appear after ours was added in front of fullscreen
+			new MutationObserver(() => this.placeButton(container, wrapper)).observe(container, {childList: true});
 		}
+
+		this.placeButton(container, wrapper);
 
 		wrapper.querySelector('button').classList.toggle(
 			'rte-ambilight-button--active',
 			this.addon.isOn('ambilight.enabled') && !this.unsupported && !this.tooSlow
 		);
+	}
+
+	// Users expect theatre mode right before fullscreen, so the light goes in front of both
+	placeButton(container, wrapper) {
+		if (!this.addon.isOn('ambilight.button'))
+			return;
+
+		let before = container.querySelector('button[data-a-target="player-theatre-mode-button"]') ??
+			container.querySelector('button[data-a-target="player-fullscreen-button"]');
+		while (before?.parentElement && before.parentElement !== container)
+			before = before.parentElement;
+		if (before?.parentElement !== container)
+			before = null;
+		if (wrapper.parentElement !== container || wrapper.nextElementSibling !== before)
+			container.insertBefore(wrapper, before);
 	}
 }
