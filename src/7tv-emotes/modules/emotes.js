@@ -140,6 +140,13 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 		this.emotes.unloadSet(setID);
 
 		if (ffzEmotes && ffzEmotes.length > 0) {
+			// A 7TV set can hold one emote under several names, but FFZ keys set emotes by id.
+			const ids = new Set();
+			for (const ffzEmote of ffzEmotes) {
+				if (ids.has(ffzEmote.id)) ffzEmote.id = `${ffzEmote.SEVENTV_emote.id}-${ffzEmote.name}`;
+				ids.add(ffzEmote.id);
+			}
+
 			channel.addSet('addon.seventv_emotes', setID, {
 				title: 'Channel Emotes',
 				title_is_channel: true,
@@ -150,7 +157,14 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 		}
 	}
 
-	addEmoteToChannelSet(channel, emote, force = false) {
+	getChannelSetKey(emotes, emote) {
+		return Object.keys(emotes).find(key => {
+			const seventvEmote = emotes[key].SEVENTV_emote;
+			return seventvEmote?.id === emote.id && seventvEmote.name === emote.name;
+		});
+	}
+
+	addEmoteToChannelSet(channel, emote, force = false, oldEmote = null) {
 		const emoteSet = this.getChannelSet(channel);
 
 		const showUnlisted = this.settings.get('addon.seventv_emotes.unlisted_emotes');
@@ -162,7 +176,8 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 				const convertedEmote = this.convertEmote(emote);
 				if (!convertedEmote) return false;
 
-				emotes[emote.id] = convertedEmote;
+				if (oldEmote) delete emotes[this.getChannelSetKey(emotes, oldEmote)];
+				emotes[`${emote.id}-${emote.name}`] = convertedEmote;
 
 				this.setChannelSet(channel, Object.values(emotes));
 				return true;
@@ -172,15 +187,16 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 		return false;
 	}
 
-	removeEmoteFromChannelSet(channel, emoteID) {
+	removeEmoteFromChannelSet(channel, emote) {
 		const emoteSet = this.getChannelSet(channel);
 
 		if (emoteSet) {
 			const emotes = emoteSet.emotes || {};
 
-			if (!emotes[emoteID]) return false;
+			const key = this.getChannelSetKey(emotes, emote);
+			if (!key) return false;
 
-			delete emotes[emoteID];
+			delete emotes[key];
 
 			this.setChannelSet(channel, Object.values(emotes));
 			return true;
@@ -189,11 +205,11 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 		return false;
 	}
 
-	getEmoteFromChannelSet(channel, emoteID) {
+	getEmoteFromChannelSet(channel, emote) {
 		const emoteSet = this.getChannelSet(channel);
 
 		if (emoteSet && emoteSet.emotes) {
-			const ffzEmote = emoteSet.emotes[emoteID];
+			const ffzEmote = emoteSet.emotes[this.getChannelSetKey(emoteSet.emotes, emote)];
 
 			if (ffzEmote && ffzEmote.SEVENTV_emote){
 				return ffzEmote.SEVENTV_emote;
@@ -286,20 +302,19 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 			for (const emote of body[dataType]) {
 				if (emote.key !== 'emotes') continue;
 
-				const emoteId = emote.value?.id ?? emote.old_value.id;
-				const oldEmote = this.getEmoteFromChannelSet(channel, emoteId);
+				const oldEmote = emote.old_value && this.getEmoteFromChannelSet(channel, emote.old_value);
 
 				switch (action) {
 					case 'UPDATE':
 						if (!oldEmote) break;
 
-						completed = this.addEmoteToChannelSet(channel, emote.value);
+						completed = this.addEmoteToChannelSet(channel, emote.value, false, oldEmote);
 						break;
 					case 'ADD':
 						completed = this.addEmoteToChannelSet(channel, emote.value);
 						break;
 					case 'REMOVE':
-						completed = this.removeEmoteFromChannelSet(channel, emoteId);
+						completed = this.removeEmoteFromChannelSet(channel, emote.old_value);
 						break;
 				}
 
