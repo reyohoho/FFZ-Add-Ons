@@ -1,5 +1,6 @@
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 const GQL_URL = 'https://gql.twitch.tv/gql';
+const FETCH_TIMEOUT = 10000;
 
 const VOD_QUALITIES = ['chunked', '1080p60', '720p60', '480p30', '360p30', '160p30'];
 
@@ -21,7 +22,9 @@ async function gqlFetch(body) {
 	const headers = {'Client-ID': TWITCH_CLIENT_ID, 'Content-Type': 'application/json'};
 	const token = getAuthToken();
 	if (token) headers.Authorization = `OAuth ${token}`;
-	const res = await fetch(GQL_URL, {method: 'POST', headers, body: JSON.stringify(body)});
+	// A hung request must not hold the controller's in-flight guards forever
+	const signal = AbortSignal.timeout?.(FETCH_TIMEOUT);
+	const res = await fetch(GQL_URL, {method: 'POST', headers, body: JSON.stringify(body), signal});
 	if (!res.ok) throw new Error(`GQL ${res.status}`);
 	return res.json();
 }
@@ -38,9 +41,14 @@ export async function fetchCurrentVod(login) {
 		query: `query($login:String!){user(login:$login){videos(first:5,sort:TIME,type:ARCHIVE){edges{node{id createdAt status}}}}}`,
 		variables: {login},
 	});
-	const edges = data?.data?.user?.videos?.edges;
-	if (!edges?.length) return null;
-	const recording = edges.find((edge) => edge.node.status === 'RECORDING');
+	const user = data?.data?.user;
+	if (user === null && !data?.errors?.length) return null;
+	// HTTP 200 with errors must not count as "stream ended", or hiccups would tear the controls down mid-stream
+	const edges = user?.videos?.edges;
+	if (!Array.isArray(edges)) {
+		throw new Error(`VOD lookup failed${data?.errors?.length ? `: ${data.errors[0].message}` : ''}`);
+	}
+	const recording = edges.find((edge) => edge?.node?.status === 'RECORDING');
 	return recording ? recording.node : null;
 }
 
