@@ -1,5 +1,5 @@
 import Hls from 'hls.js';
-import {fetchCurrentVod, isSubscribed, resolveVodPlaybackUrl, revokeVodPlaybackUrl} from './vod-service.js';
+import {fetchCurrentVod, resolveVodPlaybackUrl, revokeVodPlaybackUrl} from './vod-service.js';
 
 function observeSelector(selector, callback) {
 	const run = () => {
@@ -172,10 +172,9 @@ export default class LiveRewindController {
   }
 
   isAdPlaying() {
-    return !!(
-      document.querySelector('[data-a-target="video-ad-label"]') ||
-      document.querySelector('[data-test-selector="ad-overlay-component"]') ||
-      document.querySelector('.ad-banner-default-container')
+    const root = this.playerContainer() || document;
+    return !!root.querySelector(
+      '[data-a-target="video-ad-label"], [data-test-selector="ad-overlay-component"], .ad-banner-default-container'
     );
   }
 
@@ -190,6 +189,11 @@ export default class LiveRewindController {
       document.querySelector('[data-a-target="player-controls"]') ||
       document.querySelector('.player-controls')
     );
+  }
+
+  // Twitch's own rewind (Turbo, ad-free subs) puts its seekbar into the controls; checked on the page, not guessed from status
+  nativeRewind() {
+    return !!this.nativeControls()?.querySelector('[data-a-target="player-seekbar"]');
   }
 
   channelFromUrl() {
@@ -297,8 +301,11 @@ export default class LiveRewindController {
   async checkVod() {
     if (!this.channel || !this.enabled || !this.canUseRewind()) return;
     try {
-      if (await isSubscribed(this.channel)) {
-        this.log('Subscribed, skipping rewind UI');
+      if (this.nativeRewind()) {
+        this.log('Native rewind present, skipping rewind UI');
+        this.vodId = null;
+        this.vodCreatedAt = null;
+        this.removeControls();
         return;
       }
 
@@ -347,6 +354,9 @@ export default class LiveRewindController {
     if (!this.canUseRewind()) return;
 
     document.getElementById('rte-lr-seekbar-area')?.remove();
+    if (this.onSeekMouseMove) document.removeEventListener('mousemove', this.onSeekMouseMove);
+    if (this.onSeekMouseUp) document.removeEventListener('mouseup', this.onSeekMouseUp);
+    if (this.nativeRewind()) return;
 
     const controls = this.nativeControls();
     if (!controls) return;
@@ -785,6 +795,19 @@ export default class LiveRewindController {
   }
 
   updateSeek() {
+    if (this.nativeRewind()) {
+      this.removeControls();
+      return;
+    }
+
+    // Twitch can re-render the player (e.g. after tab/window switches) outside the observed container
+    const controls = this.nativeControls();
+    if (this.vodId && controls && !controls.contains(this.ui.seekArea)) {
+      this.injectControls();
+      this.watchForReinject();
+      return;
+    }
+
     const seekArea = document.getElementById('rte-lr-seekbar-area');
     if (seekArea) seekArea.style.display = this.isAdPlaying() ? 'none' : '';
 

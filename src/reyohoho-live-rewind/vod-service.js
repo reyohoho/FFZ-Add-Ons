@@ -33,18 +33,6 @@ export async function fetchVodMetadata(vodId) {
 	return data?.data?.video ?? null;
 }
 
-export async function isSubscribed(login) {
-	try {
-		const data = await gqlFetch({
-			query: `query($login:String!){user(login:$login){self{subscriptionBenefit{id}}}}`,
-			variables: {login},
-		});
-		return !!data?.data?.user?.self?.subscriptionBenefit?.id;
-	} catch (_) {
-		return false;
-	}
-}
-
 export async function fetchCurrentVod(login) {
 	const data = await gqlFetch({
 		query: `query($login:String!){user(login:$login){videos(first:5,sort:TIME,type:ARCHIVE){edges{node{id createdAt status}}}}}`,
