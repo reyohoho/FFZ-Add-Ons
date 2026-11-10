@@ -11,10 +11,12 @@ const {createElement} = FrankerFaceZ.utilities.dom;
 const PREFIX = 'addon.reyohoho-tweaks';
 const PATH = 'Add-Ons > ReYohoho Tweaks';
 const STYLE_ID = 'rte-tweaks-style';
+// Set once Ambilight was switched off for users who had it on from the old default
+const AMBILIGHT_RESET_KEY = `${PREFIX}.ambilight.reset-off`;
 
 // Each entry inherits the section of the previous one; entries with min/max are numeric text boxes
 const SETTINGS = [
-	{key: 'ambilight.enabled', default: true, section: 'Ambilight', title: 'Ambilight',
+	{key: 'ambilight.enabled', default: false, section: 'Ambilight', title: 'Ambilight',
 		description: 'Light up the area around the player with the colors of the stream. Needs the dark Twitch theme and hardware acceleration (WebGL 2).'},
 	{key: 'ambilight.button', default: true, title: 'Show the Ambilight button in the player',
 		description: 'Click toggles the light, right click opens these settings.'},
@@ -98,6 +100,7 @@ class ReyohohoTweaks extends Addon {
 
 	onEnable() {
 		this.active = true;
+		this.resetAmbilight();
 		if (!document.getElementById(STYLE_ID))
 			document.head.appendChild(createElement('link', {
 				id: STYLE_ID,
@@ -109,6 +112,16 @@ class ReyohohoTweaks extends Addon {
 
 		this.on('site.player:update-gui', this.ambilight.addButton, this.ambilight);
 		this.update();
+	}
+
+	// Ambilight is off by default now; turn it off once for everyone, the player button turns it back on
+	resetAmbilight() {
+		const provider = this.settings.provider;
+		if (provider.get(AMBILIGHT_RESET_KEY))
+			return;
+		for (const profile of this.settings.__profiles)
+			profile.delete(`${PREFIX}.ambilight.enabled`);
+		provider.set(AMBILIGHT_RESET_KEY, true);
 	}
 
 	onDisable() {
