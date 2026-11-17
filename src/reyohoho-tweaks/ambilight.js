@@ -263,13 +263,16 @@ export default class Ambilight {
 		style.top = `${rect.top - spread - (host?.top ?? 0)}px`;
 		style.width = `${width}px`;
 		style.height = `${height}px`;
+		// The mirror button flips the video with scaleX(-1); the box is centered on the video, so the same flip mirrors the light
+		style.transform = this.video?.style.transform.includes('scaleX(-1)') ? 'scaleX(-1)' : '';
 		if (this.barsCanvas?.isConnected) {
 			const container = this.barsCanvas.parentElement.getBoundingClientRect();
 			Object.assign(this.barsCanvas.style, {
 				left: `${rect.left - side - container.left}px`,
 				top: `${rect.top - spread - container.top}px`,
 				width: style.width,
-				height: style.height
+				height: style.height,
+				transform: style.transform
 			});
 		}
 
