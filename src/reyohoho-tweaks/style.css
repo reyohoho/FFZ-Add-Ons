@@ -132,6 +132,54 @@ html.tw-root--theme-dark.rte-ambilight-theatre .right-column--theatre .channel-r
 	opacity: 0.8;
 }
 
+/* ── VOD chat sync ── */
+/* Twitch centres the title and pins the collapse button to the left, so keep out of the flow */
+.video-chat__header:has(.rte-vod-chat-sync) {
+	position: relative;
+}
+
+.rte-vod-chat-sync {
+	position: absolute;
+	right: 0.5rem;
+	display: flex;
+	align-items: center;
+	gap: 0.2rem;
+	font-size: var(--font-size-6);
+}
+
+.rte-vod-chat-sync[hidden] {
+	display: none;
+}
+
+.rte-vod-chat-sync button {
+	width: 2rem;
+	height: 2rem;
+	border-radius: var(--border-radius-medium);
+	color: inherit;
+	font-weight: var(--font-weight-semibold);
+}
+
+.rte-vod-chat-sync button:hover {
+	background: var(--color-background-button-text-hover);
+}
+
+.rte-vod-chat-sync input {
+	width: 3.5rem;
+	padding: 0 0.3rem;
+	border: var(--border-width-input) solid var(--color-border-input);
+	border-radius: var(--border-radius-medium);
+	background: var(--color-background-input);
+	color: inherit;
+	text-align: center;
+	-moz-appearance: textfield;
+}
+
+.rte-vod-chat-sync input::-webkit-inner-spin-button,
+.rte-vod-chat-sync input::-webkit-outer-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
 /* ── Chat resize handle ── */
 .rte-chat-width-handle {
 	position: absolute;

@@ -2,6 +2,7 @@ import Ambilight from './ambilight.js';
 import ChannelTweaks from './channel-tweaks.js';
 import ChatResize from './chat-resize.js';
 import LiveCatchup from './live-catchup.js';
+import VodChatSync from './vod-chat-sync.js';
 import VodRealTime from './vod-real-time.js';
 import VolumeWheel from './volume-wheel.js';
 import STYLE_URL from './style.css';
@@ -35,6 +36,8 @@ const SETTINGS = [
 
 	{key: 'vod-real-time', default: true, section: 'VODs', title: 'Show the real time of the broadcast on VODs',
 		description: 'Show the real date and time of the broadcast next to the timecode when watching a VOD.'},
+	{key: 'vod-chat-sync', default: true, title: 'Show the chat sync control above VOD chat',
+		description: 'Shift VOD chat back or forward in seconds when it runs ahead of or lags behind the video. The shift is kept per VOD until the page is reloaded.'},
 
 	{key: 'chat-resize', default: true, section: 'Chat', title: 'Resize the chat by dragging its edge',
 		description: 'Drag the edge of the chat column next to the player. Double-click the edge to reset. Changes the Chat > Appearance > Width setting.'},
@@ -93,6 +96,7 @@ class ReyohohoTweaks extends Addon {
 		this.ambilight = new Ambilight(this);
 		this.liveCatchup = new LiveCatchup(this);
 		this.vodRealTime = new VodRealTime(this);
+		this.vodChatSync = new VodChatSync(this);
 		this.chatResize = new ChatResize(this);
 		this.channelTweaks = new ChannelTweaks(this);
 		this.volumeWheel = new VolumeWheel(this);
@@ -135,6 +139,7 @@ class ReyohohoTweaks extends Addon {
 		this.ambilight.update();
 		this.liveCatchup.update();
 		this.vodRealTime.update();
+		this.vodChatSync.update();
 		this.chatResize.update();
 		this.channelTweaks.update();
 		this.volumeWheel.update();
