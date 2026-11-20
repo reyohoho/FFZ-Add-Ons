@@ -235,9 +235,13 @@ html.tw-root--theme-dark.rte-ambilight-theatre .right-column--theatre .channel-r
 }
 
 /* ── Player ── */
-/* In theatre mode the fixed player sits outside the overflow-hidden page columns, so Popper flags tooltips on its
-   left-side controls (volume percent, play, mute) as reference-hidden and Twitch fades them out */
-html:has(.channel-root__scroll-area--theatre-mode) .tw-tooltip-layer [data-popper-reference-hidden='true'] {
+/* In theatre mode the fixed player and chat sit outside the overflow-hidden page columns, so Popper flags tooltips on
+   the player's left-side controls (volume percent, play, mute) and the player and chat settings menus as
+   reference-hidden and Twitch fades them out, with or without RTE. Theatre mode only, where both stay on screen:
+   elsewhere a flagged menu really is scrolled away, and once Twitch stops flagging them this matches nothing */
+html:has(.channel-root__scroll-area--theatre-mode) .tw-tooltip-layer [data-popper-reference-hidden='true'],
+html:has(.channel-root__scroll-area--theatre-mode)
+	[data-popper-reference-hidden='true']:has([data-a-target='player-settings-menu'], [data-a-target='chat-settings-balloon']) {
 	opacity: 1;
 	pointer-events: auto;
 }
