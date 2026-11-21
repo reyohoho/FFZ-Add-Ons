@@ -1,3 +1,5 @@
+import gql from 'graphql-tag';
+
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 const GQL_URL = 'https://gql.twitch.tv/gql';
 const FETCH_TIMEOUT = 10000;
@@ -52,11 +54,66 @@ export async function fetchCurrentVod(login) {
 	return recording ? recording.node : null;
 }
 
+const VOD_COMMENTS_QUERY = gql`
+	query RTELiveRewindComments($id: ID!, $offset: Int, $cursor: Cursor) {
+		video(id: $id) {
+			id
+			comments(contentOffsetSeconds: $offset, after: $cursor) {
+				edges {
+					cursor
+					node {
+						id
+						contentOffsetSeconds
+						commenter {
+							id
+							login
+							displayName
+						}
+						message {
+							userColor
+							userBadges {
+								setID
+								version
+							}
+							fragments {
+								text
+								emote {
+									emoteID
+								}
+							}
+						}
+					}
+				}
+				pageInfo {
+					hasNextPage
+				}
+			}
+		}
+	}
+`;
+
+// One page (~50) of comments from an offset in seconds, or after a cursor.
+// Through Twitch's own Apollo client: it adds the Client-Integrity header, without which paging by cursor fails the
+// integrity check. no-cache: thousands of comments must not pile up in the page's Apollo cache
+export async function fetchVodComments(vodId, {offset, cursor}) {
+	const client = FrankerFaceZ.get().resolve('site.apollo')?.client;
+	if (!client) throw new Error('Apollo client unavailable');
+	let timer;
+	const timeout = new Promise((_, reject) => {
+		timer = setTimeout(() => reject(new Error('GQL timeout')), FETCH_TIMEOUT);
+	});
+	// Cleared on the answer, so a late timeout never surfaces as an unhandled rejection
+	const query = client.query({query: VOD_COMMENTS_QUERY, variables: {id: vodId, offset, cursor}, fetchPolicy: 'no-cache'});
+	const {data} = await Promise.race([query, timeout]).finally(() => clearTimeout(timer));
+	return data?.video?.comments ?? null;
+}
+
 export async function fetchVodToken(vodId) {
 	const data = await gqlFetch({
 		operationName: 'PlaybackAccessToken_Template',
-		query: `query PlaybackAccessToken_Template($login:String!,$isLive:Boolean!,$vodID:ID!,$isVod:Boolean!,$playerType:String!){videoPlaybackAccessToken(id:$vodID,params:{platform:"web",playerBackend:"mediaplayer",playerType:$playerType})@include(if:$isVod){value signature __typename}}`,
-		variables: {login: '', isLive: false, vodID: vodId, isVod: true, playerType: 'site'},
+		// GQL rejects the whole query over a declared but unused variable, which left every rewind on the synthetic playlist
+		query: `query PlaybackAccessToken_Template($vodID:ID!,$playerType:String!){videoPlaybackAccessToken(id:$vodID,params:{platform:"web",playerBackend:"mediaplayer",playerType:$playerType}){value signature __typename}}`,
+		variables: {vodID: vodId, playerType: 'site'},
 	});
 	return data?.data?.videoPlaybackAccessToken ?? null;
 }

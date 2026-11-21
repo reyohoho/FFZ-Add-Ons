@@ -224,7 +224,8 @@ class ReyohohoLiveRewind extends Addon {
 			this.controller = new LiveRewindController({
 				log: (...args) => this.log.info(...args),
 				syncAudio: (video) => this._syncAudioCompressor(video),
-				canUseRewind: () => this.hasAccess && this._isSettingEnabled()
+				canUseRewind: () => this.hasAccess && this._isSettingEnabled(),
+				getPlayer: () => this.resolve('site.player')?.current
 			});
 		}
 

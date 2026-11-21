@@ -267,3 +267,46 @@
   height: 14px;
   object-fit: contain;
 }
+
+/* --- Recording chat over the live chat list while rewinding --- */
+.rte-lr-chat {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background-base, #18181b);
+  color: var(--color-text-base, #efeff1);
+}
+
+.rte-lr-chat-header {
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--color-border-base, rgba(83, 83, 95, 0.38));
+  color: var(--color-text-alt-2, #adadb8);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Reversed column: the scroll position stays at the newest line while content grows */
+.rte-lr-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.rte-lr-chat-line {
+  padding: 4px 16px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.rte-lr-chat-line .video-chat__message-author {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.rte-lr-chat-line .chat-line__message--emote {
+  vertical-align: middle;
+}

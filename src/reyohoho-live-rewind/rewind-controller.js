@@ -2,6 +2,7 @@
 
 import Hls from 'hls.js';
 import SeekPreview, {PREVIEW_H, PREVIEW_W} from './seek-preview.js';
+import VodChatReplay from './vod-chat-replay.js';
 import {fetchCurrentVod, resolveVodPlaybackUrl, revokeVodPlaybackUrl} from './vod-service.js';
 
 function observeSelector(selector, callback) {
@@ -67,9 +68,28 @@ function formatTime(sec) {
   return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}`;
 }
 
+// The VOD level for a live quality: the same rendition group (usher's VIDEO, the synthetic playlist's
+// STABLE-VARIANT-ID), else the sharpest one not above it with the closest frame rate, else the lowest
+export function pickLevel(levels, {group, height = 0, framerate = 0}) {
+  const byGroup = levels.findIndex((level) => (level.attrs?.VIDEO ?? level.attrs?.['STABLE-VARIANT-ID']) === group);
+  if (byGroup !== -1) return byGroup;
+  const score = (level) => {
+    const h = level.height || 0;
+    // Audio only has no height and is never a fallback for video
+    if (!h) return -Infinity;
+    return h <= height ? h * 1000 - Math.abs((level.frameRate || 0) - framerate) : -h;
+  };
+  let best = 0;
+  levels.forEach((level, i) => {
+    if (score(level) > score(levels[best])) best = i;
+  });
+  return best;
+}
+
 export default class LiveRewindController {
-  constructor({log, syncAudio, canUseRewind} = {}) {
+  constructor({log, syncAudio, canUseRewind, getPlayer} = {}) {
     this._logFn = typeof log === 'function' ? log : () => {};
+    this._getPlayerFn = typeof getPlayer === 'function' ? getPlayer : () => null;
     this._syncAudioFn = typeof syncAudio === 'function' ? syncAudio : () => {};
     this._canUseRewindFn = typeof canUseRewind === 'function' ? canUseRewind : () => true;
     this.enabled = true;
@@ -81,6 +101,7 @@ export default class LiveRewindController {
     this.isRewinding = false;
     this.hlsInstance = null;
     this.hlsReady = false;
+    this.syncedQuality = null;
     this.vodVideo = null;
     this.ui = {};
     this.uiTimer = null;
@@ -112,6 +133,7 @@ export default class LiveRewindController {
       getSeekbar: () => this.ui.seekbar,
       formatTime,
     });
+    this.chatReplay = new VodChatReplay({log: (...args) => this.log(...args)});
   }
 
   resetPreview() {
@@ -149,6 +171,7 @@ export default class LiveRewindController {
     this.hlsInstance?.destroy();
     this.hlsInstance = null;
     this.hlsReady = false;
+    this.syncedQuality = null;
   }
 
   elapsed() {
@@ -212,7 +235,6 @@ export default class LiveRewindController {
     if (!this.globalHooksAttached) {
       this.globalHooksAttached = true;
       this.hookNavigation();
-      this.hookQualityMenu();
       this.hookVolumeSlider();
       this.hookNativeButtons();
       this.hookSpeedMenu();
@@ -389,6 +411,13 @@ export default class LiveRewindController {
     this.ensureUi();
     this.updateSeek();
     this.keepControlsUp();
+    if (!this.isRewinding) return;
+    this.syncQuality();
+    const video = this.vodVideo;
+    // Only a settled position: a drag, a pending seek or a VOD still loading would refetch the chat every tick
+    if (video && this.hlsReady && !this.seekDragging && !video.seeking && video.readyState >= 2) {
+      this.chatReplay.tick(video.currentTime);
+    }
   }
 
   // Twitch hides its controls 5 s after they appear even with the pointer on them; re-arm that timer while on the seekbar
@@ -775,10 +804,13 @@ export default class LiveRewindController {
     if (this.hlsReady && this.hlsInstance && this.vodVideo) {
       if (!this.vodVideo.isConnected && !this.reattachVodVideo()) return;
       this.syncVodVolume();
+      // Before the seek, so the first fragments already come in the chosen quality
+      this.syncQuality();
       this.vodVideo.currentTime = seekTo;
       this.showVodVideo();
       this.vodVideo.play().catch(() => {});
       this.isRewinding = true;
+      this.chatReplay.start(this.vodId, this.channel);
       this.muteNative();
       this.updateSeek();
       this.updatePlayPauseIcon();
@@ -828,6 +860,7 @@ export default class LiveRewindController {
           return;
         }
         this.syncVodVolume();
+        this.syncQuality();
         if (this.pendingSeek != null) video.currentTime = this.pendingSeek;
         this.pendingSeek = null;
         video.play().catch(() => {});
@@ -841,6 +874,7 @@ export default class LiveRewindController {
 
       this.showVodVideo();
       this.isRewinding = true;
+      this.chatReplay.start(vodId, this.channel);
       this.muteNative();
       this.updateSeek();
     } catch (error) {
@@ -1025,6 +1059,7 @@ export default class LiveRewindController {
       this.vodVideo.playbackRate = 1;
     }
     this.hideVodVideo();
+    this.chatReplay.stop();
     this.unmuteNative();
     this.restorePlayPauseIcon();
 
@@ -1106,40 +1141,25 @@ export default class LiveRewindController {
     }
   }
 
-  hookQualityMenu() {
-    document.addEventListener(
-      'click',
-      (event) => {
-        if (!this.isRewinding || !this.hlsInstance) return;
-        const item =
-          event.target.closest('[data-a-target="player-settings-menu-item-quality"]') ||
-          event.target.closest('[data-a-target^="player-settings-submenu-quality-option"]');
-        if (!item) return;
-
-        const text = item.textContent.trim().toLowerCase();
-        const {levels} = this.hlsInstance;
-        if (!levels?.length) return;
-
-        if (text.includes('auto')) {
-          this.hlsInstance.currentLevel = -1;
-          return;
-        }
-
-        const match = text.match(/(\d{3,4})p/);
-        if (!match) return;
-        const targetHeight = parseInt(match[1], 10);
-        let bestIdx = -1;
-        for (let i = 0; i < levels.length; i++) {
-          if (levels[i].height === targetHeight) {
-            bestIdx = i;
-            break;
-          }
-        }
-        if (bestIdx === -1 && text.includes('source')) bestIdx = 0;
-        if (bestIdx !== -1) this.hlsInstance.currentLevel = bestIdx;
-      },
-      true
-    );
+  // The VOD plays the quality picked in Twitch's own menu, which keeps driving the muted live player.
+  // Read from the player, not the menu text, so it works in any language and however the pick was made
+  syncQuality() {
+    const hls = this.hlsInstance;
+    if (!this.hlsReady || !hls?.levels?.length) return;
+    let quality = null;
+    try {
+      const instance = this._getPlayerFn();
+      const player = instance?.core ?? instance;
+      // getQuality() names a concrete rendition even in auto mode
+      if (player?.isAutoQualityMode?.() === false) quality = player.getQuality?.() ?? null;
+    } catch (_) {
+      quality = null;
+    }
+    const key = quality ? `${quality.group}|${quality.height}|${quality.framerate}` : 'auto';
+    if (key === this.syncedQuality) return;
+    this.syncedQuality = key;
+    hls.currentLevel = quality ? pickLevel(hls.levels, quality) : -1;
+    this.log('Quality →', quality?.name ?? 'auto');
   }
 
   hookSpeedMenu() {
@@ -1238,6 +1258,7 @@ export default class LiveRewindController {
       this.vodVideo.remove();
       this.vodVideo = null;
     }
+    this.chatReplay.stop();
     this.unmuteNative();
     this.restorePlayPauseIcon();
     clearInterval(this.vodCheckInterval);
