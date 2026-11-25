@@ -81,8 +81,9 @@ export default class API extends FrankerFaceZ.utilities.module.Module {
 }
 
 export class User extends FrankerFaceZ.utilities.module.Module {
-	fetchUserData(user_id) {
+	fetchUserData(user_id, {channelPack = false} = {}) {
 		return this.parent.requestObject(`users/twitch/${user_id}`, {
+			rteChannelPack: channelPack,
 			headers: {
 				'X-7tv-Missing-EmoteSet-Aware': '1'
 			}

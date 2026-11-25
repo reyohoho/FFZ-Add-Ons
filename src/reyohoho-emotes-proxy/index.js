@@ -310,9 +310,18 @@ class EmotesProxy extends Addon {
 			if (!service || !self.isServiceEnabled(service))
 				return self._origFetch.call(window, input, init);
 
+			const proxiedFetch = () => {
+				if (service !== '7tv' || !init?.rteChannelPack)
+					return self._origFetch.call(window, rewrite(input, url), init);
+
+				const headers = new Headers(init.headers);
+				headers.set('Accept', 'application/json; rte-channel=1');
+				return self._origFetch.call(window, rewrite(input, url), {...init, headers});
+			};
+
 			// Proxy base already selected: rewrite immediately.
 			if (self._proxyBase)
-				return self._origFetch.call(window, rewrite(input, url), init);
+				return proxiedFetch();
 
 			// Probe still running: defer the request until we know whether a
 			// proxy is available. Keeps early 7TV/BTTV/FFZ API calls from
@@ -320,7 +329,7 @@ class EmotesProxy extends Addon {
 			return self._ready.then(() => {
 				if (!self.isEnabled() || !self._proxyBase || !self.isServiceEnabled(service))
 					return self._origFetch.call(window, input, init);
-				return self._origFetch.call(window, rewrite(input, url), init);
+				return proxiedFetch();
 			});
 		};
 	}

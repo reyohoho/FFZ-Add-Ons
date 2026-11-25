@@ -138,7 +138,7 @@ export default class Socket extends FrankerFaceZ.utilities.module.Module {
 
 		this._rooms[room.id] = {};
 
-		const stv_room = await this.stv_api.user.fetchUserData(room.id);
+		const stv_room = await this.stv_api.user.fetchUserData(room.id, {channelPack: true});
 		if (stv_room?.emote_set_id) {
 			this._rooms[room.id] = stv_room;
 	

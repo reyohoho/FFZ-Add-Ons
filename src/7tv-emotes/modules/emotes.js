@@ -236,7 +236,7 @@ export default class Emotes extends FrankerFaceZ.utilities.module.Module {
 				channelEmotes = await this.api.emotes.fetchEmoteSet(setID);
 			}
 			else {
-				const userData = await this.api.user.fetchUserData(channel.id);
+				const userData = await this.api.user.fetchUserData(channel.id, {channelPack: true});
 				if (!userData.emote_set_id) return false;
 
 				channelEmotes = await this.api.emotes.fetchEmoteSet(userData.emote_set_id);
