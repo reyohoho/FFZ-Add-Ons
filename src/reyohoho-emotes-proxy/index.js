@@ -1,3 +1,5 @@
+import LasqamonBadges from './lasqamon';
+
 const STAREGE_DOMAINS = [
 	'https://ext.rte.net.ru:8443'
 ];
@@ -60,6 +62,8 @@ class EmotesProxy extends Addon {
 		this._badgeIdCounter = 0;
 		this._badgeRefreshTimer = null;
 		this._badgeRefreshInFlight = null;
+
+		this._lasqamons = new LasqamonBadges(this);
 
 		this._paintDefs = new Map();
 		this._userPaintCache = new Map();
@@ -158,6 +162,17 @@ class EmotesProxy extends Addon {
 			changed: () => this._toggleBadges()
 		});
 
+		this.settings.add(`${SETTING_PREFIX}.lasqamons`, {
+			default: true,
+			ui: {
+				sort: 11,
+				path: 'Add-Ons > ReYohoho Emotes Proxy >> Badges',
+				title: 'Lasqamon badges in Lasqa’s chat',
+				component: 'setting-check-box'
+			},
+			changed: () => this._lasqamons.sync()
+		});
+
 		this.settings.add(`${SETTING_PREFIX}.paints`, {
 			default: true,
 			ui: {
@@ -191,12 +206,14 @@ class EmotesProxy extends Addon {
 
 		this._registerCurrentUser();
 		this._startBadgeRefresh();
+		this._lasqamons.enable();
 		this._preloadPaints();
 	}
 
 	onDisable() {
 		this._removeFetchInterceptor();
 		this.chat.removeTokenizer('reyohoho-paint');
+		this._lasqamons.disable();
 		this._stopBadgeRefresh();
 		this._cleanupBadges();
 		this._cleanupPaints();
@@ -494,6 +511,7 @@ class EmotesProxy extends Addon {
 	}
 
 	_toggleBadges() {
+		this._lasqamons.sync();
 		const enabled = this.settings.get(`${SETTING_PREFIX}.badges`);
 		if (!enabled) {
 			for (const user of this.chat.iterateUsers())
