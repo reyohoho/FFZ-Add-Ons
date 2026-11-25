@@ -1,32 +1,10 @@
+import {renderLasqamonCard} from './card';
+import CARD_STYLE from './card.css';
+
 const PROVIDER = 'addon.reyohoho-emotes-proxy';
 const BADGE = PROVIDER + '.lasqamon';
 const SITE = 'https://lasqamon.lasqa.ru';
 const MINUTE = 60_000;
-
-function details(profile, stale) {
-	const lines = [];
-	if (profile.level != null) {
-		const status = profile.activity?.label || (profile.resting ? 'Отдыхает' : profile.duelState || 'Свободен');
-		lines.push(`Уровень: ${profile.level}`, `Статус: ${status}`,
-			`HP: ${profile.hp ?? '?'} / ${profile.maxHP ?? '?'} · MP: ${profile.mp ?? '?'} / ${profile.maxMP ?? '?'}`);
-		if (profile.job) lines.push('Профессия: ' + profile.job);
-		const stats = Object.entries(profile.stats ?? {}).map(([key, value]) => `${key}: ${value}`);
-		if (stats.length) lines.push('Характеристики: ' + stats.join(' · '));
-		if (profile.duelState) lines.push('Готовность: ' + profile.duelState);
-		const minutes = Math.ceil((profile.rematchUntil - Date.now()) / MINUTE);
-		if (minutes > 0 && Number.isFinite(minutes)) {
-			const date = new Intl.DateTimeFormat('ru-RU', {
-				day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow'
-			}).format(profile.rematchUntil);
-			lines.push(`Кулдаун повторных пар: ещё ${Math.floor(minutes / 60)} ч ${minutes % 60} мин · ${date} МСК`);
-		}
-		if (profile.wins != null || profile.losses != null || profile.draws != null)
-			lines.push(`Победы / поражения / ничьи: ${profile.wins ?? 0} / ${profile.losses ?? 0} / ${profile.draws ?? 0}`);
-		if (profile.xp != null) lines.push('Боевой опыт: ' + profile.xp);
-	}
-	if (stale) lines.push(profile.level == null ? 'Статус пока недоступен' : 'Сохранённые данные');
-	return lines.join('\n');
-}
 
 export default class LasqamonBadges {
 	constructor(addon) {
@@ -38,12 +16,52 @@ export default class LasqamonBadges {
 
 	enable() {
 		this.enabled = true;
+		const style = this.style = document.createElement('link');
+		style.rel = 'stylesheet';
+		style.href = CARD_STYLE;
+		style.crossOrigin = 'anonymous';
+		document.head.append(style);
+		const handler = (target, tip) => {
+			const ds = this.addon.badges.getBadgeData(target);
+			const login = ds.data?.find(entry => entry.id === BADGE)?.badge?.login;
+			tip.add_class = 'lqm-ffz-tip';
+			return this.tooltip(login, tip);
+		};
+		handler.onShow = (target, tip) => {
+			this.openTip?.hide();
+			this.openTip = tip;
+			const controller = new AbortController();
+			tip.onLasqamonClose = () => controller.abort();
+			const fit = () => {
+				const r = target.getBoundingClientRect();
+				const space = Math.max(1, Math.floor(Math.max(r.top, innerHeight - r.bottom) - 22)) + 'px';
+				if (tip.outer.style.getPropertyValue('--lqm-room') !== space) {
+					tip.outer.style.setProperty('--lqm-room', space);
+					tip.update();
+				}
+			};
+			const {signal} = controller;
+			window.addEventListener('resize', fit, {signal});
+			window.addEventListener('scroll', fit, {capture: true, signal});
+			window.addEventListener('keydown', e => { if (e.key === 'Escape') tip.hide(); }, {signal});
+			fit();
+		};
+		handler.onHide = (_target, tip) => {
+			tip.onLasqamonClose?.();
+			if (tip === this.openTip) this.openTip = null;
+		};
+		handler.interactive = true;
+		handler.delayHide = 180;
+		this.addon.resolve('tooltips').define(BADGE, handler);
 		this.addon.chat.context.on('context_changed', this.sync, this);
 		this.sync();
 	}
 
 	disable() {
 		this.enabled = false;
+		this.openTip?.hide();
+		this.style?.remove();
+		this.addon.resolve('tooltips').define(BADGE, null);
 		this.addon.chat.context.off('context_changed', this.sync, this);
 		this.sync();
 	}
@@ -54,6 +72,7 @@ export default class LasqamonBadges {
 			&& settings.get(PROVIDER + '.badges') && settings.get(PROVIDER + '.lasqamons');
 		if (active && this.room && !this.room.destroyed && this.room.login === 'lasqa') return;
 		if (this.room) {
+			this.openTip?.hide();
 			this.session.abort();
 			clearTimeout(this.timer);
 			for (const login of this.profiles.keys())
@@ -71,7 +90,7 @@ export default class LasqamonBadges {
 		badges.loadBadgeData(BADGE, {
 			id: BADGE, title: 'Ласкамон', slot: 71, image: this.fallbackArt(), trans: {invert: false},
 			css: 'background-size:contain;background-position:center;',
-			tooltipExtra: (ds, badge, target) => target && this.tooltip(badge?.login),
+			tooltip_type: BADGE,
 			click_handler: (_id, _login, _roomId, _roomLogin, data) => {
 				const login = data.find(entry => entry.id === BADGE)?.badge?.login;
 				const profile = this.profiles.get(login);
@@ -119,10 +138,27 @@ export default class LasqamonBadges {
 		}
 	}
 
-	async tooltip(login) {
+	tooltip(login, tip) {
 		const profile = this.profiles.get(login);
 		if (!profile) return null;
+		const showArt = this.addon.chat.context.get('tooltip.badge-images');
+		const art = showArt ? profile.artUrl || this.fallbackArt() : null;
+		const host = document.createElement('div');
+		host.append(renderLasqamonCard(profile, art));
 		const signal = this.session.signal;
+		this.fetchDetails(login, signal).then(data => {
+			if (signal.aborted || !host.isConnected || this.profiles.get(login)?.id !== profile.id) return;
+			const same = data?.resident?.id === profile.id;
+			const offset = host.firstElementChild.scrollTop;
+			const card = renderLasqamonCard(same ? data.resident : profile, art, !same || data.stale);
+			host.replaceChildren(card);
+			card.scrollTop = offset;
+			tip.update();
+		});
+		return host;
+	}
+
+	fetchDetails(login, signal) {
 		let request = this.pending.get(login);
 		if (!request) {
 			request = fetch(this.addon._proxyBase + '/api/lasqamon/' + encodeURIComponent(login), {
@@ -133,13 +169,6 @@ export default class LasqamonBadges {
 				.finally(() => { if (this.pending.get(login) === request) this.pending.delete(login); });
 			this.pending.set(login, request);
 		}
-		const data = await request;
-		if (signal.aborted || this.profiles.get(login)?.id !== profile.id) return null;
-		const same = data?.resident?.id === profile.id;
-		const body = document.createElement('div');
-		body.style.whiteSpace = 'pre-line';
-		body.style.textAlign = 'left';
-		body.textContent = details(same ? data.resident : profile, !same || data.stale);
-		return body;
+		return request;
 	}
 }
